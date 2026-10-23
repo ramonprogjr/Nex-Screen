@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NexScreen</string>
+    <string name="status_waiting_title">Aguardando o NexScreen no notebook…</string>
+    <string name="status_hint">Conecte o cabo USB, rode o script de instalação (ele faz o adb reverse tcp:27183 tcp:27183) e abra o NexScreen no Windows.</string>
+    <string name="status_idle">Parado.</string>
+    <string name="status_connecting">Conectando a 127.0.0.1:27183 (tentativa %1$d)…</string>
+    <string name="status_handshaking">Porta USB aberta. Aguardando a resposta do NexScreen no Windows…</string>
+    <string name="status_waiting_retry">O notebook não respondeu. Nova tentativa em %1$.1f s.</string>
+    <string name="status_streaming_starting">Recebendo vídeo %1$d×%2$d a %3$d FPS. Aguardando o primeiro quadro…</string>
+    <string name="status_decoder_unavailable">O decodificador de vídeo do tablet não aceita %1$d×%2$d. Escolha uma resolução menor no NexScreen do Windows (o limite do Tab A9+ é 1920×1088, por exemplo 1728×1080).</string>
+    <string name="hud_streaming">%1$d×%2$d · %3$d FPS · exibindo %4$.1f FPS</string>
+    <string name="hud_latency">Decodificação p50 %1$.1f ms · p95 %2$.1f ms · descartados %3$d</string>
+</resources>

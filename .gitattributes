@@ -1,0 +1,13 @@
+* text=auto
+
+# Unix scripts must keep LF
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Kotlin/Gradle follow .editorconfig (LF)
+*.kt text eol=lf
+*.kts text eol=lf
+
+*.bat text eol=crlf
+*.jar binary
+*.png binary
