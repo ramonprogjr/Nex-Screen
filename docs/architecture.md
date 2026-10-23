@@ -13,6 +13,21 @@ Driver UMDF IddCx derivado da amostra `video/IndirectDisplay` (ver [THIRD_PARTY.
 - O container ID é fixo (`{01A9D02A-B722-42A3-8DD5-18A033F50727}`), para que o Windows lembre a posição e a escala.
 - O device de software é criado por `nexscreen-vdd-ctl` (`SwDeviceCreate`, enumerador `NexScreenVDD`).
 
+### Assinatura (teste C1, 23/10/2026)
+
+Na VM, com `testsigning off`, o driver assinado por um certificado não-Microsoft confiável (em Root e
+TrustedPublisher) carregou normalmente e passou em `vm-m1-check.ps1 -Cycles 5`. Por ser UMDF, o driver não exige a
+assinatura de kernel da Microsoft: basta uma assinatura Authenticode confiável, como a da SignPath Foundation ou de
+um certificado OV.
+
+### Pendências encontradas
+
+- **O monitor some após reiniciar.** O device criado por `nexscreen-vdd-ctl create` (software device via
+  `SwDeviceCreate`) fica "phantom" depois do boot. Solução: instalar como device root-enumerated
+  (`Root\NexScreenVDD`, que já está no INF), que persiste como o do VDD, ou recriar o device ao iniciar.
+- **O decoder do Tab A9+ vai até 1920×1088.** Acrescentar 1728×1080 (16:10) aos modos e ao EDID, como modo
+  preferencial, para evitar a reescala no companion.
+
 ### Pontos que a amostra deixa incompletos
 
 | Ponto | Onde | Marco |
