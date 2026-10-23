@@ -1,11 +1,23 @@
 # NexScreen
 
-Transforma um tablet Android (Galaxy Tab A9+) num monitor independente do Windows 11, usando um monitor virtual
-IddCx de verdade.
+**NexScreen turns an Android tablet into a real extended monitor for Windows 10/11.** A Windows indirect display
+driver (IddCx) creates a virtual monitor. The companion app captures that monitor, encodes it with hardware H.264 and
+streams it to the Android app over USB. Touch on the tablet is sent back as mouse input.
+
+O NexScreen transforma um tablet Android (testado no Galaxy Tab A9+) num **monitor estendido de verdade** do
+Windows: você arrasta janelas para o tablet e usa por toque.
+
+| Component | Path | Language |
+|---|---|---|
+| Virtual display driver (UMDF/IddCx) | [driver/virtual-display](driver/virtual-display) | C++ (WDK) |
+| Windows companion (capture, encode, input) | [windows/companion](windows/companion) | C# / .NET 8 |
+| Android receiver app | [android](android) | Kotlin |
+| Protocol | [protocol/nexlink-v0-usb.md](protocol/nexlink-v0-usb.md) | — |
 
 - Plano, escopo e marcos: [PROJETO.md](PROJETO.md)
 - Arquitetura: [docs/architecture.md](docs/architecture.md)
-- Build e teste do driver: [docs/build-windows.md](docs/build-windows.md)
+- Build do Windows (driver e companion): [docs/build-windows.md](docs/build-windows.md)
+- Build do Android: [docs/build-android.md](docs/build-android.md)
 
 ## Usar
 
@@ -16,6 +28,50 @@ IddCx de verdade.
 
 No tablet: toque = clique, arrastar = arrastar, segurar = botão direito, dois dedos = rolagem e três dedos = estatísticas.
 
-**Estado:** M1 (prova do monitor virtual) aprovado numa VM. O Windows enumera o monitor "NexScreen", estende o
-desktop, troca entre os 4 modos e sobrevive a 10 ciclos de create/remove. Próximo marco: M2 (transmissão para o
-tablet).
+## Desinstalar / Uninstall
+
+- **Android app:** desinstale "NexScreen" pelo tablet, ou rode `adb uninstall app.nexscreen`.
+- **Companion:** é uma pasta, não um instalador. Feche o programa e apague a pasta. Os logs ficam em
+  `%LOCALAPPDATA%\NexScreen\logs`.
+- **Driver NexScreen:** `tools\vm-uninstall-driver.ps1` (como administrador) remove o monitor e o pacote do driver.
+- **Ponte VDD (terceiros):** `devcon remove Root\MttVDD` como administrador, depois apague `C:\VirtualDisplayDriver`.
+
+## Estado
+
+- **M1:** monitor virtual aprovado numa VM (enumeração, modo estendido, 4 modos, 10 ciclos de create/remove).
+- **M2:** imagem no tablet via USB, 1728×1080 a ~30 FPS com encoder por hardware.
+- **M3:** desktop estendido com cursor e toque como mouse.
+- **Próximos:** rotação, Wi-Fi com pareamento seguro, assinatura do driver e instalador.
+
+## Code signing policy
+
+Windows binaries of official releases (the NexScreen driver package, the companion and the tools) are built by
+GitHub Actions from this repository. The plan is for them to be signed with a certificate obtained through the SignPath
+Foundation free code signing program. Once that is in place, signed releases will carry this attribution:
+
+> Free code signing provided by [SignPath.io](https://signpath.io), certificate by
+> [SignPath Foundation](https://signpath.org).
+
+Team roles:
+
+- **Committers and reviewers:** [Ramon Pereira (@ramonprogjr)](https://github.com/ramonprogjr). Changes from anyone
+  else arrive as pull requests and are reviewed before merging.
+- **Approvers:** [Ramon Pereira (@ramonprogjr)](https://github.com/ramonprogjr) manually approves every signing
+  request.
+
+## Privacy
+
+This program will not transfer any information to other networked systems unless specifically requested by the
+user or the person installing or operating it.
+
+The companion only listens on `127.0.0.1` and talks to the NexScreen app on the user's own tablet over a USB cable
+(`adb reverse`). It sends no telemetry and contacts no internet service. Logs stay on the local machine and never
+contain screen images.
+
+Este programa não envia nenhuma informação a outros sistemas em rede, a menos que o usuário peça. Não há telemetria,
+e a imagem da tela vai apenas para o tablet do próprio usuário, pelo cabo USB.
+
+## License
+
+[MIT](LICENSE). Files under `driver/virtual-display/` derive from the Microsoft IndirectDisplay sample and are under
+MS-PL (see [THIRD_PARTY.md](driver/virtual-display/THIRD_PARTY.md)).
