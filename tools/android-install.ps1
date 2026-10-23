@@ -10,7 +10,7 @@
 .EXAMPLE
     .\tools\android-install.ps1
     .\tools\android-install.ps1 -SkipBuild -Launch
-    .\tools\android-install.ps1 -Serial R9XY106J8ZK
+    .\tools\android-install.ps1 -Serial <serial do adb devices>
 #>
 [CmdletBinding()]
 param(
