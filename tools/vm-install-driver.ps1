@@ -18,20 +18,29 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$inf = Join-Path $PackageDir 'NexScreenVDD.inf'
-$cer = Join-Path $PackageDir 'NexScreenTest.cer'
-$ctl = Join-Path $PackageDir 'nexscreen-vdd-ctl.exe'
-foreach ($f in $inf, $cer, $ctl, (Join-Path $PackageDir 'NexScreenVDD.cat')) {
-    if (-not (Test-Path $f)) {
-        throw "$f not found. Use -PackageDir to point to the signed package."
+foreach ($name in 'NexScreenVDD.inf', 'NexScreenVDD.dll', 'NexScreenVDD.cat', 'NexScreenTest.cer', 'nexscreen-vdd-ctl.exe') {
+    if (-not (Test-Path (Join-Path $PackageDir $name))) {
+        throw "$name not found in $PackageDir. Use -PackageDir to point to the signed package."
     }
 }
 
-# 1. Trust the test certificate
+# Work from a local copy: VM shared folders (\\VBoxSvr\...) are not reliable for pnputil and the device tool
+$localDir = Join-Path $env:ProgramData 'NexScreen\driver'
+New-Item -ItemType Directory -Force $localDir | Out-Null
+Copy-Item (Join-Path $PackageDir '*') $localDir -Force
+$inf = Join-Path $localDir 'NexScreenVDD.inf'
+$cer = Join-Path $localDir 'NexScreenTest.cer'
+$ctl = Join-Path $localDir 'nexscreen-vdd-ctl.exe'
+
+# 1. Trust the test certificate. certutil instead of Import-Certificate, which reports "access denied" for
+#    LocalMachine stores even when the import succeeds.
 foreach ($store in 'Root', 'TrustedPublisher') {
-    Import-Certificate -FilePath $cer -CertStoreLocation "Cert:\LocalMachine\$store" | Out-Null
+    certutil -f -addstore $store $cer | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "certutil -addstore $store failed (exit code $LASTEXITCODE)."
+    }
 }
-Write-Host 'Test certificate imported into Root and TrustedPublisher.'
+Write-Host 'Test certificate added to Root and TrustedPublisher.'
 
 # 2. Test signing. SystemStartOptions reflects the current boot and is not localized, unlike bcdedit output.
 $startOptions = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control').SystemStartOptions

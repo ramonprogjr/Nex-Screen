@@ -7,5 +7,6 @@ IddCx de verdade.
 - Arquitetura: [docs/architecture.md](docs/architecture.md)
 - Build e teste do driver: [docs/build-windows.md](docs/build-windows.md)
 
-**Estado:** M1 (prova do monitor virtual). O driver em `driver/virtual-display` está adaptado, mas ainda não foi
-compilado nem testado.
+**Estado:** M1 (prova do monitor virtual) aprovado numa VM. O Windows enumera o monitor "NexScreen", estende o
+desktop, troca entre os 4 modos e sobrevive a 10 ciclos de create/remove. Próximo marco: M2 (transmissão para o
+tablet).

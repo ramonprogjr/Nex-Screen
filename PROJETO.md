@@ -76,7 +76,7 @@ nexscreen/
 └── tools/       scripts PowerShell de build, assinatura, VM e Android
 ```
 
-**Estado atual desta pasta:** as adaptações das seções 6.1 a 6.5 já foram aplicadas a `driver/virtual-display/` e a `tools/`, **mas ainda não foram compiladas nem testadas**. Ainda falta o `LICENSE` da raiz.
+**Estado atual desta pasta:** o **M1 foi aprovado** (checklist 6.6 completo numa VM). O próximo marco é o M2. Ainda falta o `LICENSE` da raiz.
 - Commit da amostra: `microsoft/Windows-driver-samples@bb68ed5e770bce04dc5395ec9258dafab034184d`, pasta `video/IndirectDisplay`.
 
 ## 5. Preparar a máquina de desenvolvimento
@@ -176,13 +176,17 @@ Retorne um código de saída diferente de zero em caso de falha e verifique `hrC
 
 ### 6.6 Checklist de aceite do M1
 
-1. [ ] `build-driver.ps1` compila sem erros.
-2. [ ] Na VM, `pnputil /enum-devices /class Display` lista o **NexScreen Virtual Display** sem erro (Problem code 0).
-3. [ ] **Configurações → Sistema → Tela** mostra um segundo monitor "NexScreen".
-4. [ ] "Estender estes monitores" funciona e uma janela arrastada para o monitor 2 sai da tela principal (teste também com `Win+Shift+→`).
-5. [ ] Trocar para 1600×900 e para 30/60 Hz aplica o modo sem erro.
-6. [ ] `nexscreen-vdd-ctl remove`: o monitor some, as janelas voltam para a tela principal e o desktop continua utilizável.
-7. [ ] 10 ciclos de `create`/`remove` sem travar o dwm nem gerar erro no Event Viewer (Applications and Services → Microsoft → Windows → DriverFrameworks-UserMode).
+1. [x] `build-driver.ps1` compila sem erros.
+2. [x] Na VM, `pnputil /enum-devices /class Display` lista o **NexScreen Virtual Display** sem erro (Problem code 0).
+3. [x] **Configurações → Sistema → Tela** mostra um segundo monitor "NexScreen".
+4. [x] "Estender estes monitores" funciona e uma janela arrastada para o monitor 2 sai da tela principal (teste também com `Win+Shift+→`).
+5. [x] Trocar para 1600×900 e para 30/60 Hz aplica o modo sem erro.
+6. [x] `nexscreen-vdd-ctl remove`: o monitor some, as janelas voltam para a tela principal e o desktop continua utilizável.
+7. [x] 10 ciclos de `create`/`remove` sem travar o dwm nem gerar erro no Event Viewer (Applications and Services → Microsoft → Windows → DriverFrameworks-UserMode).
+
+> **M1 aprovado em 23/10/2026** numa VM VirtualBox 7.2.22 com Windows 11 (build 26100, test signing).
+> - **Itens 2, 5 e 7:** `tools/vm-m1-check.ps1 -Cycles 10` (4 modos aplicados e lidos de volta; 10 ciclos sem erro no UMDF).
+> - **Itens 3, 4 e 6:** conferidos por screenshot (`Win+Shift+→` levou a janela ao monitor 2; após `remove` ela voltou à tela principal).
 
 > A VM prova a enumeração e o ciclo de vida, **não** o desempenho nem a GPU real. Só depois do M1 aprovado vale decidir se o driver vai para o notebook real, com test signing.
 

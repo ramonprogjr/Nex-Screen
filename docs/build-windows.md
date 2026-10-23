@@ -21,6 +21,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\vm-install-driver.ps1   # 2ª v
 pnputil /enum-devices /class Display
 ```
 
+Para validar o M1: `powershell -ExecutionPolicy Bypass -File N:\tools\vm-m1-check.ps1 -Cycles 10`. Ele confere o
+device e o monitor, os 4 modos e os ciclos de remove/create, e grava o log em `C:\ProgramData\NexScreen\m1-check.log`.
+
 Para remover: `vm-uninstall-driver.ps1` (use `-DisableTestSigning` para desligar o modo de teste também).
 
 ## Notas

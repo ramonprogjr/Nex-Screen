@@ -15,6 +15,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $ctl = Join-Path $PackageDir 'nexscreen-vdd-ctl.exe'
+# Prefer the local copy made by vm-install-driver.ps1
+$localCtl = Join-Path $env:ProgramData 'NexScreen\driver\nexscreen-vdd-ctl.exe'
+if (Test-Path $localCtl) {
+    $ctl = $localCtl
+}
 if (Test-Path $ctl) {
     & $ctl remove
     if ($LASTEXITCODE -ne 0) {
