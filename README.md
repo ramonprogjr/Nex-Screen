@@ -21,18 +21,37 @@ Windows: você arrasta janelas para o tablet e usa por toque.
 
 ## Usar
 
-1. Tablet no cabo USB, com a depuração USB autorizada e o app instalado (`.\tools\android-install.ps1`).
-2. Um monitor virtual no modo **Estender** (Win+P). Até o driver NexScreen ser assinado, a ponte é o
-   [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver), que é assinado.
-3. `.\tools\start-nexscreen.ps1`: liga o USB, abre o app e transmite o monitor virtual. Ctrl+C encerra.
+Antes, uma vez: o app no tablet (`.\tools\android-install.ps1`), a depuração USB autorizada e um monitor virtual.
+Até o driver NexScreen ser assinado, a ponte é o
+[Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver), que é assinado.
+
+1. Instale o companion uma vez: `.\tools\install-companion.ps1` (sem administrador; vai para
+   `%LOCALAPPDATA%\Programs\NexScreen` e cria o atalho "NexScreen" no menu Iniciar).
+2. Abra **NexScreen** no menu Iniciar. Ele fica no ícone perto do relógio, sem janela.
+3. Ligue o tablet no cabo USB. O NexScreen faz o `adb reverse`, abre o app no tablet e começa a transmitir.
+
+O ícone mostra o estado ("aguardando o tablet", "transmitindo para o tablet", "Tablet não autorizado — aceite a
+depuração USB no tablet"...). No menu do ícone:
+
+- **Manter a tela do tablet estendida** (ligado): se o monitor virtual sair da área de trabalho (por exemplo depois
+  de reiniciar, ou com Win+P em "Somente na tela do PC") e houver um tablet conectado, o NexScreen volta a estender.
+- **Iniciar com o Windows** (desligado): marque para o NexScreen abrir sozinho depois de reiniciar.
+- **Estender a área de trabalho**, **Abrir pasta de logs** e **Sair**.
+
+Sem cabo, a **depuração sem fio** do Android também serve: pareie o tablet uma vez com `adb pair <ip>:<porta>`
+(o código aparece no tablet) e depois `adb connect <ip>:<porta>`. Daí em diante o NexScreen reconecta sozinho
+quando a porta muda, e o menu mostra "Tablet conectado por Wi-Fi". O pareamento é sempre feito por você.
+
+Para desenvolvimento, `.\tools\start-nexscreen.ps1` roda o companion neste console (Ctrl+C encerra).
 
 No tablet: toque = clique, arrastar = arrastar, segurar = botão direito, dois dedos = rolagem e três dedos = estatísticas.
 
 ## Desinstalar / Uninstall
 
 - **Android app:** desinstale "NexScreen" pelo tablet, ou rode `adb uninstall app.nexscreen`.
-- **Companion:** é uma pasta, não um instalador. Feche o programa e apague a pasta. Os logs ficam em
-  `%LOCALAPPDATA%\NexScreen\logs`.
+- **Companion:** `.\tools\install-companion.ps1 -Uninstall` fecha o programa e remove a pasta
+  `%LOCALAPPDATA%\Programs\NexScreen`, o atalho do menu Iniciar e a inicialização com o Windows. Se você usou o zip
+  de uma release, feche o programa e apague a pasta. Os logs ficam em `%LOCALAPPDATA%\NexScreen\logs`.
 - **Driver NexScreen:** `tools\vm-uninstall-driver.ps1` (como administrador) remove o monitor e o pacote do driver.
 - **Ponte VDD (terceiros):** `devcon remove Root\MttVDD` como administrador, depois apague `C:\VirtualDisplayDriver`.
 

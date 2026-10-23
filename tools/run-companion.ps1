@@ -8,7 +8,7 @@
     .\tools\run-companion.ps1 --output primary --dump $env:TEMP\test.h264 --seconds 5
     .\tools\run-companion.ps1 -NoBuild -Configuration Debug -- --output \.\DISPLAY2
 #>
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [ValidateSet('Release', 'Debug')]
     [string]$Configuration = 'Release',
@@ -43,5 +43,16 @@ if (-not (Test-Path $exe)) {
 # PowerShell may pass a literal '--' separator through; the companion does not expect it.
 $passArgs = @($CompanionArgs | Where-Object { $_ -ne '--' })
 Write-Host "Running: $exe $($passArgs -join ' ')"
-& $exe @passArgs
-exit $LASTEXITCODE
+
+# The companion is a GUI-subsystem exe (no console window in --tray mode) that attaches to this console, and
+# PowerShell does not wait for GUI programs, so start it in this console and wait for it here. WaitForExit() is
+# used instead of Start-Process -Wait, which would also wait for an adb server the companion may have started.
+$quoted = @($passArgs | ForEach-Object {
+    if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '\"') + '"' } else { $_ }
+})
+$startArgs = @{ FilePath = $exe; NoNewWindow = $true; PassThru = $true }
+if ($quoted.Count -gt 0) { $startArgs.ArgumentList = $quoted }
+$proc = Start-Process @startArgs
+$null = $proc.Handle  # keeps the exit code readable after exit
+while (-not $proc.WaitForExit(200)) { }
+exit $proc.ExitCode

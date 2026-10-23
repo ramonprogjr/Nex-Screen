@@ -13,13 +13,20 @@ public static class Log
     public static LogLevel MinLevel { get; set; } = LogLevel.Info;
     public static string? FilePath { get; private set; }
 
+    /// <summary>False in --tray mode, where there is no console.</summary>
+    public static bool ConsoleEnabled { get; set; } = true;
+
+    /// <summary>%LOCALAPPDATA%\NexScreen\logs</summary>
+    public static string DefaultDirectory =>
+        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexScreen", "logs");
+
     public static void EnableFile(string directory)
     {
         try
         {
             Directory.CreateDirectory(directory);
             FilePath = Path.Combine(directory, $"companion-{DateTime.Now:yyyyMMdd}.log");
-            _file = new StreamWriter(new FileStream(FilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite), new UTF8Encoding(false))
+            _file = new StreamWriter(new FileStream(FilePath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite, bufferSize: 0), new UTF8Encoding(false))
             {
                 AutoFlush = true,
             };
@@ -62,7 +69,11 @@ public static class Log
         var line = $"{DateTime.Now:HH:mm:ss.fff} {tag} {message}";
         lock (Gate)
         {
-            if (level >= LogLevel.Warn)
+            if (!ConsoleEnabled)
+            {
+                // No console (--tray): file only.
+            }
+            else if (level >= LogLevel.Warn)
             {
                 var old = Console.ForegroundColor;
                 Console.ForegroundColor = level == LogLevel.Warn ? ConsoleColor.Yellow : ConsoleColor.Red;
@@ -76,7 +87,13 @@ public static class Log
 
             try
             {
-                _file?.WriteLine(line);
+                if (_file is not null)
+                {
+                    // Another instance may append to the same daily file: write at the current end, not at our
+                    // cached position, so lines interleave instead of overwriting each other.
+                    _file.BaseStream.Seek(0, SeekOrigin.End);
+                    _file.WriteLine(line);
+                }
             }
             catch (IOException)
             {

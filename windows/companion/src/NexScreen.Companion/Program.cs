@@ -1,11 +1,23 @@
 using NexScreen.Companion;
+using NexScreen.Companion.Adb;
 using NexScreen.Companion.Displays;
 using NexScreen.Companion.Encoding;
 using NexScreen.Companion.Input;
 using NexScreen.Companion.Net;
 using NexScreen.Companion.Streaming;
+using NexScreen.Companion.Tray;
 using NexScreen.Companion.Util;
 using Vortice.MediaFoundation;
+
+var trayRequested = args.Any(a => string.Equals(a, "--tray", StringComparison.OrdinalIgnoreCase));
+
+// GUI-subsystem exe: console modes attach to the launching console (or open one); --tray has none.
+if (!trayRequested)
+{
+    ConsoleHost.Setup(allocateIfNone: true);
+}
+
+Log.ConsoleEnabled = ConsoleHost.HasOutput;
 
 Options options;
 try
@@ -14,6 +26,13 @@ try
 }
 catch (ArgumentException ex)
 {
+    if (trayRequested)
+    {
+        System.Windows.Forms.MessageBox.Show(ex.Message, "NexScreen", System.Windows.Forms.MessageBoxButtons.OK,
+            System.Windows.Forms.MessageBoxIcon.Error);
+        return 2;
+    }
+
     Console.Error.WriteLine(ex.Message);
     Console.Error.WriteLine();
     Console.Error.WriteLine(Options.Usage);
@@ -26,11 +45,17 @@ if (options.Help)
     return 0;
 }
 
-Console.OutputEncoding = System.Text.Encoding.UTF8;
+using var instance = options.Tray ? SingleInstance.TryAcquire() : null;
+if (options.Tray && instance is null)
+{
+    // Already running in this session; the other instance shows a notification.
+    return 0;
+}
+
 Log.MinLevel = options.Verbose ? LogLevel.Debug : LogLevel.Info;
 if (options.LogFile && !options.List)
 {
-    Log.EnableFile(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "NexScreen", "logs"));
+    Log.EnableFile(Log.DefaultDirectory);
 }
 
 MediaFactory.MFStartup(false).CheckError();
@@ -42,13 +67,17 @@ try
     }
 
     using var cts = new CancellationTokenSource();
-    Console.CancelKeyPress += (_, e) =>
+    if (ConsoleHost.HasOutput)
     {
-        e.Cancel = true;
-        cts.Cancel();
-    };
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            cts.Cancel();
+        };
+    }
 
-    Log.Info($"NexScreen companion starting (output={options.Output}, fps={options.Fps}, bitrate={options.Bitrate / 1000} kbps)" +
+    Log.Info($"NexScreen companion starting (output={options.Output}, fps={options.Fps}, bitrate={options.Bitrate / 1000} kbps" +
+             (options.Tray ? ", tray" : string.Empty) + ")" +
              (Log.FilePath is null ? string.Empty : $", log file {Log.FilePath}"));
     var pipelineOptions = new PipelineOptions(options.Output, options.Fps, options.Bitrate, options.EffectiveGop,
         options.Width, options.Height, options.Profile, options.Level, options.Encoder, options.MaxWidth, options.MaxHeight,
@@ -56,7 +85,7 @@ try
 
     return options.DumpPath is not null
         ? RunDump(pipelineOptions, options.DumpPath, options.Seconds, cts)
-        : await RunServerAsync(pipelineOptions, options.Port, options.InjectInput, cts);
+        : await RunServerAsync(pipelineOptions, options, instance, cts);
 }
 finally
 {
@@ -132,11 +161,19 @@ static int RunDump(PipelineOptions pipelineOptions, string path, int seconds, Ca
     return sink.Frames > 0 ? 0 : 1;
 }
 
-static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, int port, bool injectInput, CancellationTokenSource cts)
+static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, Options options, SingleInstance? instance, CancellationTokenSource cts)
 {
+    var port = options.Port;
+    var status = new CompanionStatus(options.AutoAdb);
+    var extender = new AutoExtender(pipelineOptions.OutputSelector, () => status.Snapshot.TabletPresent,
+        () => status.Snapshot.OutputAvailable) { Enabled = options.AutoExtend };
+    using var tray = options.Tray ? TrayApp.Start(status, extender, cts.Cancel, instance) : null;
+
     await using var transport = new TcpDisplayTransport(port);
+    transport.SessionStarted += status.SessionStarted;
+    transport.SessionEnded += status.SessionEnded;
     var sink = new NetworkStreamSink(transport);
-    if (injectInput)
+    if (options.InjectInput)
     {
         // Touch on the tablet -> mouse on the captured output (protocol/nexlink-v0-usb.md, POINTER/SCROLL)
         var injector = new InputInjector(new Win32MouseBackend(), new CapturedOutputLocator(pipelineOptions.OutputSelector).GetCurrent);
@@ -148,11 +185,47 @@ static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, int port,
         Log.Info("Touch input from the tablet is ignored (--no-input).");
     }
 
-    await transport.StartAsync(cts.Token);
+    // Another companion may own the port (e.g. a console instance); keep retrying instead of exiting.
+    for (var attempt = 0; ; attempt++)
+    {
+        try
+        {
+            await transport.StartAsync(cts.Token);
+            break;
+        }
+        catch (System.Net.Sockets.SocketException ex) when (ex.SocketErrorCode == System.Net.Sockets.SocketError.AddressAlreadyInUse)
+        {
+            if (attempt == 0)
+            {
+                Log.Warn($"Port {port} is in use (another NexScreen companion running?); retrying every 5 s.");
+            }
+
+            if (cts.Token.WaitHandle.WaitOne(TimeSpan.FromSeconds(5)))
+            {
+                return 1;
+            }
+        }
+    }
+
     var pipeline = new StreamPipeline(pipelineOptions, sink);
+    pipeline.OutputAvailabilityChanged += status.SetOutputAvailable;
     var thread = new Thread(() => pipeline.Run(cts.Token)) { Name = "Capture", IsBackground = false };
     thread.Start();
-    Log.Info("Waiting for a client (adb reverse tcp:27183 tcp:27183). Ctrl+C to stop.");
+
+    extender.Start(cts.Token);
+    if (options.AutoAdb)
+    {
+        var linker = new AdbLinker(options.AdbPath, port);
+        linker.StateChanged += status.SetAdb;
+        linker.Start(cts.Token);
+        Log.Info($"Tablet link: an authorized tablet on USB or wireless debugging gets adb reverse tcp:{port} and the app is opened (--no-adb to disable).");
+    }
+    else
+    {
+        Log.Info($"Waiting for a client (adb reverse tcp:{port} tcp:{port}).");
+    }
+
+    Log.Info(options.Tray ? "Running in the notification area." : "Ctrl+C to stop.");
     cts.Token.WaitHandle.WaitOne();
     thread.Join();
     Log.Info("Stopped.");

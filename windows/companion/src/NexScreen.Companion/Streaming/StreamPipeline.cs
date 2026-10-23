@@ -61,6 +61,8 @@ public static class EncodeSizing
 public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink sink)
 {
     private const double KeepAliveSeconds = 1.0;
+    private const int MinRetryMs = 1000;
+    private const int MaxRetryMs = 30_000;
 
     private readonly object _outputGate = new();
     private MftH264Encoder? _encoder;
@@ -90,6 +92,9 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
     /// <summary>Signaled when the first encoded frame reached the sink.</summary>
     public WaitHandle FirstFrame => _firstFrame.WaitHandle;
 
+    /// <summary>Raised when the selected output appears or disappears (true on the first successful lookup too).</summary>
+    public event Action<bool>? OutputAvailabilityChanged;
+
     public string? EncoderName { get; private set; }
     public bool EncoderIsHardware { get; private set; }
     public long FramesOut => Interlocked.Read(ref _framesOut);
@@ -116,9 +121,28 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
         try
         {
             string? lastMissing = null;
+            bool? available = null;
+            var backoffMs = MinRetryMs;
             while (!ct.IsCancellationRequested)
             {
-                var target = DisplayEnumerator.Find(options.OutputSelector);
+                DisplayOutputInfo? target;
+                try
+                {
+                    target = DisplayEnumerator.Find(options.OutputSelector);
+                }
+                catch (Exception ex) when (!ct.IsCancellationRequested)
+                {
+                    // DXGI enumeration can fail transiently during display topology changes.
+                    Log.Warn($"Output enumeration failed: {ex.GetType().Name}: {ex.Message.Trim()}");
+                    target = null;
+                }
+
+                if (available != (target is not null))
+                {
+                    available = target is not null;
+                    OutputAvailabilityChanged?.Invoke(available.Value);
+                }
+
                 if (target is null)
                 {
                     if (lastMissing != options.OutputSelector)
@@ -132,14 +156,23 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
                 }
 
                 lastMissing = null;
+                var startedAt = MonoClock.NowSeconds;
                 try
                 {
                     RunOnOutput(target, ct);
+                    backoffMs = MinRetryMs;
                 }
                 catch (Exception ex) when (!ct.IsCancellationRequested)
                 {
-                    Log.Error($"Capture pipeline error: {ex.GetType().Name}: {ex.Message.Trim()}; restarting.");
-                    ct.WaitHandle.WaitOne(1000);
+                    // Repeated failures (e.g. no usable encoder) back off up to 30 s; a long healthy run resets it.
+                    if (MonoClock.NowSeconds - startedAt > 60)
+                    {
+                        backoffMs = MinRetryMs;
+                    }
+
+                    Log.Error($"Capture pipeline error: {ex.GetType().Name}: {ex.Message.Trim()}; restarting in {backoffMs / 1000.0:0.#} s.");
+                    ct.WaitHandle.WaitOne(backoffMs);
+                    backoffMs = Math.Min(backoffMs * 2, MaxRetryMs);
                 }
             }
         }

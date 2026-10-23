@@ -5,7 +5,9 @@ namespace NexScreen.Companion.Displays;
 /// <summary>Minimal QueryDisplayConfig / DisplayConfigGetDeviceInfo interop.</summary>
 internal static class DisplayConfigInterop
 {
+    private const uint QdcAllPaths = 0x1;
     private const uint QdcOnlyActivePaths = 0x2;
+    private const uint PathActive = 0x1;
     private const int ErrorSuccess = 0;
     private const int ErrorInsufficientBuffer = 122;
 
@@ -126,8 +128,65 @@ internal static class DisplayConfigInterop
         long AdapterLuid,
         uint OutputTechnology);
 
-    /// <summary>Active display paths, keyed by source GDI name (\\.\DISPLAYn).</summary>
-    internal static List<TargetInfo> QueryActiveTargets()
+    /// <summary>A monitor known to the display stack (connected), whether or not it is part of the desktop.</summary>
+    internal sealed record MonitorTarget(string FriendlyName, string? EdidManufacturer, bool Active);
+
+    /// <summary>
+    /// All available targets (QDC_ALL_PATHS): a monitor that is plugged in / created by its driver but not attached
+    /// to the desktop shows up with Active = false.
+    /// </summary>
+    internal static List<MonitorTarget> QueryAvailableTargets()
+    {
+        var byTarget = new Dictionary<(long, uint), MonitorTarget>();
+        foreach (var path in QueryPaths(QdcAllPaths))
+        {
+            if (path.TargetInfo.TargetAvailable == 0)
+            {
+                continue;
+            }
+
+            var key = (path.TargetInfo.AdapterId.Value, path.TargetInfo.Id);
+            var active = (path.Flags & PathActive) != 0;
+            if (byTarget.TryGetValue(key, out var known))
+            {
+                if (active && !known.Active)
+                {
+                    byTarget[key] = known with { Active = true };
+                }
+
+                continue;
+            }
+
+            var (friendly, manufacturer) = GetTargetName(path.TargetInfo.AdapterId, path.TargetInfo.Id);
+            byTarget[key] = new MonitorTarget(friendly, manufacturer, active);
+        }
+
+        return [.. byTarget.Values];
+    }
+
+    private static (string Friendly, string? Manufacturer) GetTargetName(Luid adapter, uint id)
+    {
+        var target = new TargetDeviceName
+        {
+            Header = new DeviceInfoHeader
+            {
+                Type = DeviceInfoGetTargetName,
+                Size = (uint)Marshal.SizeOf<TargetDeviceName>(),
+                AdapterId = adapter,
+                Id = id,
+            },
+        };
+        if (DisplayConfigGetDeviceInfo(ref target) != ErrorSuccess)
+        {
+            return (string.Empty, null);
+        }
+
+        const uint EdidIdsValid = 0x4;
+        return (target.MonitorFriendlyDeviceName ?? string.Empty,
+            (target.Flags & EdidIdsValid) != 0 ? DecodePnpId(target.EdidManufactureId) : null);
+    }
+
+    private static PathInfo[] QueryPaths(uint flags)
     {
         PathInfo[] paths;
         ModeInfo[] modes;
@@ -135,7 +194,7 @@ internal static class DisplayConfigInterop
         var attempts = 0;
         do
         {
-            rc = GetDisplayConfigBufferSizes(QdcOnlyActivePaths, out var numPaths, out var numModes);
+            rc = GetDisplayConfigBufferSizes(flags, out var numPaths, out var numModes);
             if (rc != ErrorSuccess)
             {
                 throw new InvalidOperationException($"GetDisplayConfigBufferSizes failed: {rc}");
@@ -143,7 +202,7 @@ internal static class DisplayConfigInterop
 
             paths = new PathInfo[numPaths];
             modes = new ModeInfo[numModes];
-            rc = QueryDisplayConfig(QdcOnlyActivePaths, ref numPaths, paths, ref numModes, modes, IntPtr.Zero);
+            rc = QueryDisplayConfig(flags, ref numPaths, paths, ref numModes, modes, IntPtr.Zero);
             if (rc == ErrorSuccess)
             {
                 Array.Resize(ref paths, (int)numPaths);
@@ -156,8 +215,14 @@ internal static class DisplayConfigInterop
             throw new InvalidOperationException($"QueryDisplayConfig failed: {rc}");
         }
 
+        return paths;
+    }
+
+    /// <summary>Active display paths, keyed by source GDI name (\\.\DISPLAYn).</summary>
+    internal static List<TargetInfo> QueryActiveTargets()
+    {
         var result = new List<TargetInfo>();
-        foreach (var path in paths)
+        foreach (var path in QueryPaths(QdcOnlyActivePaths))
         {
             var source = new SourceDeviceName
             {
@@ -174,27 +239,7 @@ internal static class DisplayConfigInterop
                 continue;
             }
 
-            var target = new TargetDeviceName
-            {
-                Header = new DeviceInfoHeader
-                {
-                    Type = DeviceInfoGetTargetName,
-                    Size = (uint)Marshal.SizeOf<TargetDeviceName>(),
-                    AdapterId = path.TargetInfo.AdapterId,
-                    Id = path.TargetInfo.Id,
-                },
-            };
-            var friendly = string.Empty;
-            string? manufacturer = null;
-            if (DisplayConfigGetDeviceInfo(ref target) == ErrorSuccess)
-            {
-                friendly = target.MonitorFriendlyDeviceName ?? string.Empty;
-                const uint EdidIdsValid = 0x4;
-                if ((target.Flags & EdidIdsValid) != 0)
-                {
-                    manufacturer = DecodePnpId(target.EdidManufactureId);
-                }
-            }
+            var (friendly, manufacturer) = GetTargetName(path.TargetInfo.AdapterId, path.TargetInfo.Id);
 
             var rr = path.TargetInfo.RefreshRate;
             var hz = rr.Denominator == 0 ? 0 : rr.Numerator / (double)rr.Denominator;

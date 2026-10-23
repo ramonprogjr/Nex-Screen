@@ -37,7 +37,7 @@ Para remover: `vm-uninstall-driver.ps1` (use `-DisableTestSigning` para desligar
 
 ## Companion (M2)
 
-O companion é um app de console .NET 8 em `windows\companion` (solução `windows\NexScreen.sln`, com o projeto de
+O companion é um app .NET 8 em `windows\companion` (solução `windows\NexScreen.sln`, com o projeto de
 testes). Ele localiza o monitor, captura com DXGI Desktop Duplication, converte BGRA→NV12 na GPU, codifica H.264
 pelo Media Foundation (MFT de hardware; se falhar, o encoder de software da Microsoft) e serve o
 [NexLink v0-usb](../protocol/nexlink-v0-usb.md) em `127.0.0.1:27183`.
@@ -54,6 +54,31 @@ dotnet test -c Release
 adb reverse tcp:27183 tcp:27183                                    # liga a porta do tablet à do notebook
 ```
 
+- Instalação para uso diário: `.\tools\install-companion.ps1` publica uma cópia self-contained (arquivo único,
+  win-x64) em `%LOCALAPPDATA%\Programs\NexScreen` e cria o atalho "NexScreen" no menu Iniciar, que roda
+  `NexScreen.Companion.exe --tray`. Não precisa de administrador. `-NoLaunch` não abre o programa no fim;
+  `-Uninstall` remove a pasta, o atalho e o valor `NexScreen` de `HKCU\...\CurrentVersion\Run`.
+- `--tray`: sem janela, com ícone na área de notificação (estado, conexão USB/Wi-Fi, "Estender a área de
+  trabalho", "Manter a tela do tablet estendida", "Abrir pasta de logs", "Iniciar com o Windows", "Sair"). Uma
+  instância por sessão; abrir de novo só mostra um aviso. "Iniciar com o Windows" grava
+  `"<exe>" --tray` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` e só é ligado pelo usuário.
+- O exe é do subsistema Windows (para o `--tray` não piscar um console). Nos outros modos ele se conecta ao console
+  de quem o chamou, mas o shell não espera um programa desse tipo: use o `run-companion.ps1` (que espera) ou, no
+  cmd, `start /wait NexScreen.Companion.exe --list`. Saída redirecionada (`> arquivo`, pipe) funciona normalmente.
+- Ligação automática com o tablet (em todos os modos; `--no-adb` desliga): a cada ~2 s o companion roda
+  `adb devices -l` e, para cada tablet autorizado que aparece ou reconecta (USB ou depuração sem fio), roda
+  `adb -s <serial> reverse tcp:<porta> tcp:<porta>` e abre o app (`am start -n app.nexscreen/.MainActivity`). O
+  mesmo tablet listado duas vezes (`ip:porta` e o nome mDNS `adb-..._adb-tls-connect._tcp`) é reconhecido pelo
+  `ro.serialno` e ligado uma vez só (USB, depois `ip:porta`, depois mDNS). Sem nenhum tablet, ele roda
+  `adb mdns services` (a cada 10 s, até 60 s) e faz `adb connect` nos serviços `_adb-tls-connect._tcp`, que só
+  aceitam PCs já pareados; o pareamento nunca é automático. O adb é procurado em `--adb <caminho>`, no PATH, em
+  `%LOCALAPPDATA%\Android\Sdk\platform-tools` e no pacote WinGet `Google.PlatformTools`. Os comandos rodam sem
+  janela, com timeout e com espera crescente quando falham.
+- Monitor fora da área de trabalho: sem o monitor virtual o companion continua rodando e verifica a cada 2 s. Se o
+  monitor NexScreen/VDD existe mas não está anexado (QueryDisplayConfig com `QDC_ALL_PATHS`) e há um tablet
+  conectado, ele roda `DisplaySwitch.exe /extend` (no máximo a cada 30 s, desiste depois de 3 tentativas até o
+  monitor voltar ou o tablet reconectar). `--no-auto-extend` desliga. Falhas de captura/encoder são repetidas com
+  espera de 1 s até 30 s.
 - O script compila a solução e repassa os argumentos (`-NoBuild` pula o build). Sem argumentos, o companion procura
   o monitor com nome de EDID `NexScreen` (fabricante `NXS`); sem o driver instalado, use `--output primary` ou
   `--output \.\DISPLAYn`.

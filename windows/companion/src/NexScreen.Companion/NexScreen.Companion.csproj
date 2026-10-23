@@ -1,7 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- WinExe: no console window in tray mode; console modes attach to the parent console (Util/ConsoleHost.cs) -->
+    <OutputType>WinExe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon>app.ico</ApplicationIcon>
+    <!-- Per-monitor DPI awareness stays in app.manifest: Desktop Duplication needs it in every mode, not only with WinForms -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -20,6 +25,13 @@
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.3" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.3" />
     <PackageReference Include="Vortice.MediaFoundation" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Avoid name clashes (Point, Size, Timer...) with the capture/input code -->
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+    <EmbeddedResource Include="app.ico" LogicalName="NexScreen.app.ico" />
   </ItemGroup>
 
   <ItemGroup>

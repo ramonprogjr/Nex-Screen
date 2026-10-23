@@ -32,12 +32,30 @@ public sealed class Options
     /// <summary>Draw the mouse pointer into the video (Desktop Duplication leaves it out). --no-cursor turns it off.</summary>
     public bool DrawCursor { get; private set; } = true;
 
+    /// <summary>Run in the notification area (no console window).</summary>
+    public bool Tray { get; private set; }
+
+    /// <summary>Link the tablet automatically (adb reverse + start the app). --no-adb turns it off.</summary>
+    public bool AutoAdb { get; private set; } = true;
+
+    /// <summary>Explicit adb.exe path (default: PATH, the Android SDK, then the WinGet Google.PlatformTools package).</summary>
+    public string? AdbPath { get; private set; }
+
+    /// <summary>Re-attach the virtual monitor (DisplaySwitch /extend) when it falls out of the desktop. --no-auto-extend turns it off.</summary>
+    public bool AutoExtend { get; private set; } = true;
+
     public int EffectiveGop => GopFrames ?? Fps * 10;
 
     public const string Usage = """
         NexScreen companion (M2): captures a monitor, encodes H.264 and serves NexLink v0-usb on 127.0.0.1.
 
         Usage: NexScreen.Companion [options]
+          --tray                 Run in the notification area (no console window).
+          --no-adb               Do not run adb (reverse tcp:<port> + start the app) when a tablet is plugged in.
+          --adb <path>           adb.exe to use (default: PATH, %LOCALAPPDATA%\Android\Sdk\platform-tools, then
+                                 the WinGet Google.PlatformTools package).
+          --no-auto-extend       Do not run DisplaySwitch /extend when the virtual monitor is connected but not
+                                 attached to the desktop while a tablet is present.
           --list                 List outputs (name, resolution, refresh, adapter) and encoders, then exit.
           --output <sel>         auto (default: NexScreen monitor, else the VDD virtual monitor), nexscreen (EDID
                                  name "NexScreen" / manufacturer NXS), vdd (EDID manufacturer MTT), primary, or \\.\DISPLAYn
@@ -138,6 +156,18 @@ public sealed class Options
                     break;
                 case "--no-log-file":
                     o.LogFile = false;
+                    break;
+                case "--tray":
+                    o.Tray = true;
+                    break;
+                case "--no-adb":
+                    o.AutoAdb = false;
+                    break;
+                case "--no-auto-extend":
+                    o.AutoExtend = false;
+                    break;
+                case "--adb":
+                    o.AdbPath = Next();
                     break;
                 case "--verbose":
                     o.Verbose = true;

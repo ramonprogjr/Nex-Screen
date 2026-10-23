@@ -19,14 +19,10 @@ public sealed record DisplayOutputInfo(
     long AdapterLuid,
     uint VendorId)
 {
-    public bool IsNexScreen =>
-        string.Equals(FriendlyName, DisplayEnumerator.NexScreenMonitorName, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(EdidManufacturer, DisplayEnumerator.NexScreenManufacturer, StringComparison.Ordinal);
+    public bool IsNexScreen => DisplayEnumerator.IsNexScreenName(FriendlyName, EdidManufacturer);
 
     /// <summary>Monitor of the signed Virtual Display Driver (MttVDD) used until the NexScreen driver is signed.</summary>
-    public bool IsVdd =>
-        string.Equals(EdidManufacturer, DisplayEnumerator.VddManufacturer, StringComparison.Ordinal) ||
-        FriendlyName.StartsWith(DisplayEnumerator.VddMonitorNamePrefix, StringComparison.OrdinalIgnoreCase);
+    public bool IsVdd => DisplayEnumerator.IsVddName(FriendlyName, EdidManufacturer);
 }
 
 public static class DisplayEnumerator
@@ -94,6 +90,49 @@ public static class DisplayEnumerator
 
         return result;
     }
+
+    /// <summary>
+    /// True when a virtual monitor the selector would pick (auto / nexscreen / vdd) is connected but not attached to
+    /// the desktop, e.g. after a reboot into "PC screen only". Other selectors never trigger a re-attach.
+    /// </summary>
+    internal static bool IsVirtualMonitorDetached(string selector, IEnumerable<DisplayConfigInterop.MonitorTarget> targets)
+    {
+        Func<DisplayConfigInterop.MonitorTarget, bool>? matches = selector.ToLowerInvariant() switch
+        {
+            "auto" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer) || IsVddName(t.FriendlyName, t.EdidManufacturer),
+            "nexscreen" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer),
+            "vdd" => t => IsVddName(t.FriendlyName, t.EdidManufacturer),
+            _ => null,
+        };
+        if (matches is null)
+        {
+            return false;
+        }
+
+        var known = targets.Where(matches).ToList();
+        return known.Count > 0 && !known.Any(t => t.Active);
+    }
+
+    /// <summary>Live check of <see cref="IsVirtualMonitorDetached(string, IEnumerable{DisplayConfigInterop.MonitorTarget})"/>.</summary>
+    public static bool IsVirtualMonitorDetached(string selector)
+    {
+        try
+        {
+            return IsVirtualMonitorDetached(selector, DisplayConfigInterop.QueryAvailableTargets());
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    internal static bool IsNexScreenName(string friendlyName, string? manufacturer) =>
+        string.Equals(friendlyName, NexScreenMonitorName, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(manufacturer, NexScreenManufacturer, StringComparison.Ordinal);
+
+    internal static bool IsVddName(string friendlyName, string? manufacturer) =>
+        string.Equals(manufacturer, VddManufacturer, StringComparison.Ordinal) ||
+        friendlyName.StartsWith(VddMonitorNamePrefix, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Resolves the selector: "auto" (default: the NexScreen monitor, else the VDD virtual monitor), "nexscreen"
