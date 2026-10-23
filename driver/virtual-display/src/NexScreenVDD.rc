@@ -1,0 +1,36 @@
+#include <windows.h>
+
+#define NEXSCREEN_VER_BIN 0,1,0,0
+#define NEXSCREEN_VER_STR "0.1.0.0"
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION    NEXSCREEN_VER_BIN
+ PRODUCTVERSION NEXSCREEN_VER_BIN
+ FILEFLAGSMASK  VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS      VS_FF_DEBUG
+#else
+ FILEFLAGS      0
+#endif
+ FILEOS         VOS_NT_WINDOWS32
+ FILETYPE       VFT_DLL
+ FILESUBTYPE    VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "NexScreen"
+            VALUE "FileDescription",  "NexScreen Virtual Display Driver (UMDF IddCx)"
+            VALUE "FileVersion",      NEXSCREEN_VER_STR
+            VALUE "InternalName",     "NexScreenVDD"
+            VALUE "OriginalFilename", "NexScreenVDD.dll"
+            VALUE "ProductName",      "NexScreen"
+            VALUE "ProductVersion",   NEXSCREEN_VER_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

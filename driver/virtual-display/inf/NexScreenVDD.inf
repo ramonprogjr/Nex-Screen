@@ -1,0 +1,74 @@
+;
+; NexScreenVDD.inf
+;
+; Derived from microsoft/Windows-driver-samples video/IndirectDisplay (MS-PL). See ../THIRD_PARTY.md.
+;
+
+[Version]
+PnpLockDown=1
+Signature="$Windows NT$"
+ClassGUID = {4D36E968-E325-11CE-BFC1-08002BE10318}
+Class = Display
+ClassVer = 2.0
+Provider=%ManufacturerName%
+CatalogFile=NexScreenVDD.cat
+DriverVer= ; filled in by stampinf at build time
+
+[Manufacturer]
+%ManufacturerName%=Standard,NT$ARCH$.10.0...22000
+
+[Standard.NT$ARCH$.10.0...22000]
+%DeviceName%=MyDevice_Install, Root\NexScreenVDD ; used by Visual Studio remote debugging
+%DeviceName%=MyDevice_Install, NexScreenVDD      ; used by nexscreen-vdd-ctl.exe (SwDeviceCreate)
+
+[SourceDisksFiles]
+NexScreenVDD.dll=1
+
+[SourceDisksNames]
+1 = %DiskName%
+
+; =================== UMDF Device ==================================
+
+[MyDevice_Install.NT]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT
+CopyFiles=UMDriverCopy
+
+[MyDevice_Install.NT.hw]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.HW
+AddReg = MyDevice_HardwareDeviceSettings
+
+[MyDevice_HardwareDeviceSettings]
+HKR,, "UpperFilters",  %REG_MULTI_SZ%, "IndirectKmd"
+HKR, "WUDF", "DeviceGroupId", %REG_SZ%, "NexScreenVDDGroup" ; dedicated UMDF host process
+
+[MyDevice_Install.NT.Services]
+Include=WUDFRD.inf
+Needs=WUDFRD.NT.Services
+
+[MyDevice_Install.NT.Wdf]
+UmdfService=NexScreenVDD,NexScreenVDD_Install
+UmdfServiceOrder=NexScreenVDD
+UmdfKernelModeClientPolicy = AllowKernelModeClients
+
+[NexScreenVDD_Install]
+UmdfLibraryVersion=$UMDFVERSION$
+ServiceBinary=%12%\UMDF\NexScreenVDD.dll
+UmdfExtensions = IddCx0102
+
+[DestinationDirs]
+UMDriverCopy=12,UMDF ; copy to drivers\umdf
+
+[UMDriverCopy]
+NexScreenVDD.dll
+
+; =================== Generic ==================================
+
+[Strings]
+ManufacturerName="NexScreen"
+DiskName = "NexScreen Virtual Display Installation Disk"
+DeviceName="NexScreen Virtual Display"
+
+REG_MULTI_SZ  = 0x00010000
+REG_SZ        = 0x00000000

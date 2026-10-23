@@ -1,0 +1,33 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "NexScreenVDD", "src\NexScreenVDD.vcxproj", "{37B23982-DCFA-4876-BCBA-22BEFF17F10D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "nexscreen-vdd-ctl", "tools\nexscreen-vdd-ctl\nexscreen-vdd-ctl.vcxproj", "{385AEF2B-B273-4CC3-9B2B-1AD321B0A7D8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Debug|x64.ActiveCfg = Debug|x64
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Debug|x64.Build.0 = Debug|x64
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Debug|x64.Deploy.0 = Debug|x64
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Release|x64.ActiveCfg = Release|x64
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Release|x64.Build.0 = Release|x64
+		{37B23982-DCFA-4876-BCBA-22BEFF17F10D}.Release|x64.Deploy.0 = Release|x64
+		{385AEF2B-B273-4CC3-9B2B-1AD321B0A7D8}.Debug|x64.ActiveCfg = Debug|x64
+		{385AEF2B-B273-4CC3-9B2B-1AD321B0A7D8}.Debug|x64.Build.0 = Debug|x64
+		{385AEF2B-B273-4CC3-9B2B-1AD321B0A7D8}.Release|x64.ActiveCfg = Release|x64
+		{385AEF2B-B273-4CC3-9B2B-1AD321B0A7D8}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9E3B7C51-2F4A-4D8E-A6B1-5C0D3E7F9A24}
+	EndGlobalSection
+EndGlobal
