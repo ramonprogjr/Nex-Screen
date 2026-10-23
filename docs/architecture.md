@@ -11,7 +11,8 @@ Driver UMDF IddCx derivado da amostra `video/IndirectDisplay` (ver [THIRD_PARTY.
   (`s_SampleDefaultModes`) alimenta os modos sem EDID e os modos de destino, e um `static_assert` garante que a
   lista do EDID tem o mesmo tamanho.
 - O container ID é fixo (`{01A9D02A-B722-42A3-8DD5-18A033F50727}`), para que o Windows lembre a posição e a escala.
-- O device de software é criado por `nexscreen-vdd-ctl` (`SwDeviceCreate`, enumerador `NexScreenVDD`).
+- O device é criado por `nexscreen-vdd-ctl install`: root-enumerated (`Root\NexScreenVDD`) e persistente. Para
+  testes rápidos, `create`/`remove` criam um software device (`SwDeviceCreate`, enumerador `NexScreenVDD`).
 
 ### Assinatura (teste C1, 23/10/2026)
 
