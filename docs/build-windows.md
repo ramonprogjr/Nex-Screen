@@ -25,7 +25,9 @@ Para remover: `vm-uninstall-driver.ps1` (use `-DisableTestSigning` para desligar
 
 ## Notas
 
-- O Hyper-V só existe no Windows 11 Pro, Enterprise e Education. No **Home**, use VirtualBox ou VMware Workstation
-  (EFI ligado, Secure Boot desligado) ou uma máquina descartável. Os scripts `vm-*.ps1` funcionam em qualquer uma.
+- O Hyper-V só existe no Windows 11 Pro, Enterprise e Education. No **Home**, use o VirtualBox:
+  `.\tools\new-test-vm-vbox.ps1 -IsoPath <iso>` cria a VM (EFI, TPM 2.0, Secure Boot desligado) e compartilha o
+  repositório como `N:`, que aparece depois que as Guest Additions são instaladas no convidado. Os scripts `vm-*.ps1`
+  funcionam em qualquer VM.
 - O `tools/gen_edid.py` gera o EDID usado em `Driver.cpp`. Depois de alterar um parâmetro, rode
   `python driver\virtual-display\tools\gen_edid.py` e cole a saída no array.
