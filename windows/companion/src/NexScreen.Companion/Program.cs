@@ -1,6 +1,7 @@
 using NexScreen.Companion;
 using NexScreen.Companion.Displays;
 using NexScreen.Companion.Encoding;
+using NexScreen.Companion.Input;
 using NexScreen.Companion.Net;
 using NexScreen.Companion.Streaming;
 using NexScreen.Companion.Util;
@@ -50,11 +51,12 @@ try
     Log.Info($"NexScreen companion starting (output={options.Output}, fps={options.Fps}, bitrate={options.Bitrate / 1000} kbps)" +
              (Log.FilePath is null ? string.Empty : $", log file {Log.FilePath}"));
     var pipelineOptions = new PipelineOptions(options.Output, options.Fps, options.Bitrate, options.EffectiveGop,
-        options.Width, options.Height, options.Profile, options.Level, options.Encoder, options.MaxWidth, options.MaxHeight);
+        options.Width, options.Height, options.Profile, options.Level, options.Encoder, options.MaxWidth, options.MaxHeight,
+        DrawCursor: options.DrawCursor);
 
     return options.DumpPath is not null
         ? RunDump(pipelineOptions, options.DumpPath, options.Seconds, cts)
-        : await RunServerAsync(pipelineOptions, options.Port, cts);
+        : await RunServerAsync(pipelineOptions, options.Port, options.InjectInput, cts);
 }
 finally
 {
@@ -130,10 +132,22 @@ static int RunDump(PipelineOptions pipelineOptions, string path, int seconds, Ca
     return sink.Frames > 0 ? 0 : 1;
 }
 
-static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, int port, CancellationTokenSource cts)
+static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, int port, bool injectInput, CancellationTokenSource cts)
 {
     await using var transport = new TcpDisplayTransport(port);
     var sink = new NetworkStreamSink(transport);
+    if (injectInput)
+    {
+        // Touch on the tablet -> mouse on the captured output (protocol/nexlink-v0-usb.md, POINTER/SCROLL)
+        var injector = new InputInjector(new Win32MouseBackend(), new CapturedOutputLocator(pipelineOptions.OutputSelector).GetCurrent);
+        _ = new SessionInputBridge(transport, injector, sink.HasAnnouncedFormat);
+        Log.Info("Touch input from the tablet is injected as mouse input (--no-input to disable).");
+    }
+    else
+    {
+        Log.Info("Touch input from the tablet is ignored (--no-input).");
+    }
+
     await transport.StartAsync(cts.Token);
     var pipeline = new StreamPipeline(pipelineOptions, sink);
     var thread = new Thread(() => pipeline.Run(cts.Token)) { Name = "Capture", IsBackground = false };

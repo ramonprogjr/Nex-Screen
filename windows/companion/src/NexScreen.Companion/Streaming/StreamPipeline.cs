@@ -18,7 +18,8 @@ public sealed record PipelineOptions(
     int? Level,
     EncoderPreference Encoder,
     int MaxWidth = 1920,
-    int MaxHeight = 1088)
+    int MaxHeight = 1088,
+    bool DrawCursor = true)
 {
     public (int Width, int Height) EncodeSize(int captureWidth, int captureHeight) =>
         EncodeSizing.Fit(Width, Height, MaxWidth, MaxHeight, captureWidth, captureHeight);
@@ -83,6 +84,7 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
     private double _submitSeconds;
     private long _acqNew;
     private long _acqIdle;
+    private long _pointerFrames;
     private readonly ManualResetEventSlim _firstFrame = new(false);
 
     /// <summary>Signaled when the first encoded frame reached the sink.</summary>
@@ -151,7 +153,7 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
     private void RunOnOutput(DisplayOutputInfo target, CancellationToken ct)
     {
         using var gpu = GpuDevice.Create(target.AdapterIndex);
-        using var duplicator = new DesktopDuplicator(gpu, target.OutputIndex);
+        using var duplicator = new DesktopDuplicator(gpu, target.OutputIndex) { DrawCursor = options.DrawCursor };
         Log.Info($"Capturing {target.GdiName} \"{target.FriendlyName}\" {target.Width}x{target.Height} on \"{gpu.AdapterName}\"");
 
         Nv12Converter? converter = null;
@@ -195,10 +197,10 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
                     unavailableSince = -1;
                     lastStartError = null;
                     _pendingKey = true;
-                    Log.Info($"Desktop duplication started: {duplicator.Width}x{duplicator.Height}, rotation {duplicator.Rotation}");
+                    Log.Info($"Desktop duplication started: {duplicator.Width}x{duplicator.Height}, rotation {duplicator.Rotation}, pointer {(duplicator.DrawCursor ? "drawn" : "not drawn (--no-cursor)")}");
                     if (duplicator.Rotation is not (ModeRotation.Identity or ModeRotation.Unspecified))
                     {
-                        Log.Warn("Rotated outputs are captured in scan-out orientation (not handled in M2).");
+                        Log.Warn("Rotated outputs are captured in scan-out orientation (not handled in M2); the pointer is not drawn.");
                     }
                 }
 
@@ -248,7 +250,9 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
                 now = MonoClock.NowSeconds;
                 if (result == AcquireResult.NewFrame)
                 {
+                    // Desktop updates and, with the pointer drawn, pointer moves / shape changes (paced by --fps above).
                     _acqNew++;
+                    _pointerFrames = duplicator.PointerFrames;
                 }
                 else
                 {
@@ -433,7 +437,7 @@ public sealed class StreamPipeline(PipelineOptions options, IEncodedStreamSink s
         }
 
         Log.Info($"Video: {frames / seconds:0.0} fps, {bytes * 8 / seconds / 1000:0} kbps, encoder dropped {_encoder?.DroppedInputs ?? 0}, total frames {FramesOut}");
-        Log.Debug($"Capture: {acqNew} desktop updates, {acqIdle} idle polls in {seconds:0.0} s, " +
+        Log.Debug($"Capture: {acqNew} new frames (pointer-only total {_pointerFrames}), {acqIdle} idle polls in {seconds:0.0} s, " +
                   $"encoder submit time {_submitSeconds * 1000 / Math.Max(1, acqNew):0.0} ms/frame");
         _submitSeconds = 0;
     }

@@ -28,6 +28,12 @@ public interface IDisplaySession
 
     event Action<ClientStats>? StatsReceived;
 
+    /// <summary>POINTER from the client, already validated. Raised on the session's receive loop.</summary>
+    event Action<PointerMessage>? PointerReceived;
+
+    /// <summary>SCROLL from the client. Raised on the session's receive loop.</summary>
+    event Action<ScrollMessage>? ScrollReceived;
+
     /// <summary>Queues a control message (HELLO_ACK, CODEC_CONFIG). Never dropped while open.</summary>
     bool SendControl(MessageType type, ReadOnlyMemory<byte> payload);
 

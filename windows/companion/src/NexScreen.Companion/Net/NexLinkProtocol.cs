@@ -8,6 +8,8 @@ public enum MessageType : byte
     Hello = 0x01,
     RequestKeyframe = 0x10,
     Stats = 0x11,
+    Pointer = 0x20,
+    Scroll = 0x21,
     HelloAck = 0x81,
     CodecConfig = 0x82,
     Frame = 0x83,
@@ -30,6 +32,32 @@ public sealed record ClientStats(uint FramesDecoded, uint FramesDropped, uint De
 
 public sealed record HelloAck(ushort VideoWidth, ushort VideoHeight, ushort Fps, byte Codec);
 
+public enum PointerAction : byte
+{
+    Down = 0,
+    Move = 1,
+    Up = 2,
+    Cancel = 3,
+}
+
+[Flags]
+public enum PointerButtons : ushort
+{
+    None = 0,
+    Left = 0x1,
+    Right = 0x2,
+    Middle = 0x4,
+}
+
+/// <summary>
+/// POINTER: X/Y are 0..65535 across the video the client displays (letterbox excluded), 0,0 = top-left.
+/// <see cref="Buttons"/> is the button state after the event.
+/// </summary>
+public readonly record struct PointerMessage(PointerAction Action, byte PointerId, PointerButtons Buttons, ushort X, ushort Y);
+
+/// <summary>SCROLL in wheel units (120 = one notch). Positive Dy scrolls up, positive Dx scrolls right (like WHEEL/HWHEEL).</summary>
+public readonly record struct ScrollMessage(short Dx, short Dy);
+
 public sealed class ProtocolException(string message) : Exception(message);
 
 public static class NexLink
@@ -44,15 +72,20 @@ public static class NexLink
     public const int HelloPayloadSize = 12;
     public const int StatsPayloadSize = 16;
     public const int HelloAckPayloadSize = 12;
+    public const int PointerPayloadSize = 8;
+    public const int ScrollPayloadSize = 4;
+    public const PointerButtons KnownButtons = PointerButtons.Left | PointerButtons.Right | PointerButtons.Middle;
 
     public static ReadOnlySpan<byte> Magic => "NXS0"u8;
 
     public static bool IsKnownType(byte type) => type is
         (byte)MessageType.Hello or (byte)MessageType.RequestKeyframe or (byte)MessageType.Stats or
+        (byte)MessageType.Pointer or (byte)MessageType.Scroll or
         (byte)MessageType.HelloAck or (byte)MessageType.CodecConfig or (byte)MessageType.Frame;
 
     public static bool IsClientToServer(MessageType type) =>
-        type is MessageType.Hello or MessageType.RequestKeyframe or MessageType.Stats;
+        type is MessageType.Hello or MessageType.RequestKeyframe or MessageType.Stats or
+            MessageType.Pointer or MessageType.Scroll;
 
     public static void WriteHeader(Span<byte> destination, MessageType type, ushort flags, uint length, ulong timestampUs)
     {
@@ -121,6 +154,8 @@ public static class NexLink
         MessageType.Hello => HelloPayloadSize,
         MessageType.RequestKeyframe => 0,
         MessageType.Stats => StatsPayloadSize,
+        MessageType.Pointer => PointerPayloadSize,
+        MessageType.Scroll => ScrollPayloadSize,
         _ => null,
     };
 
@@ -182,6 +217,62 @@ public static class NexLink
         BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(4), stats.FramesDropped);
         BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(8), stats.DecodeLatencyP50Us);
         BinaryPrimitives.WriteUInt32BigEndian(payload.AsSpan(12), stats.DecodeLatencyP95Us);
+        return payload;
+    }
+
+    /// <summary>Parses POINTER, rejecting a wrong size, an action above 3 or unknown button bits.</summary>
+    public static PointerMessage ParsePointer(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length != PointerPayloadSize)
+        {
+            throw new ProtocolException($"POINTER payload must be {PointerPayloadSize} bytes, got {payload.Length}.");
+        }
+
+        if (payload[0] > (byte)PointerAction.Cancel)
+        {
+            throw new ProtocolException($"POINTER action {payload[0]} is not 0..3.");
+        }
+
+        var buttons = BinaryPrimitives.ReadUInt16BigEndian(payload[2..]);
+        if ((buttons & ~(ushort)KnownButtons) != 0)
+        {
+            throw new ProtocolException($"POINTER buttons 0x{buttons:X4} has unknown bits.");
+        }
+
+        return new PointerMessage(
+            (PointerAction)payload[0],
+            payload[1],
+            (PointerButtons)buttons,
+            BinaryPrimitives.ReadUInt16BigEndian(payload[4..]),
+            BinaryPrimitives.ReadUInt16BigEndian(payload[6..]));
+    }
+
+    public static byte[] BuildPointer(PointerMessage pointer)
+    {
+        var payload = new byte[PointerPayloadSize];
+        payload[0] = (byte)pointer.Action;
+        payload[1] = pointer.PointerId;
+        BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(2), (ushort)pointer.Buttons);
+        BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(4), pointer.X);
+        BinaryPrimitives.WriteUInt16BigEndian(payload.AsSpan(6), pointer.Y);
+        return payload;
+    }
+
+    public static ScrollMessage ParseScroll(ReadOnlySpan<byte> payload)
+    {
+        if (payload.Length != ScrollPayloadSize)
+        {
+            throw new ProtocolException($"SCROLL payload must be {ScrollPayloadSize} bytes, got {payload.Length}.");
+        }
+
+        return new ScrollMessage(BinaryPrimitives.ReadInt16BigEndian(payload), BinaryPrimitives.ReadInt16BigEndian(payload[2..]));
+    }
+
+    public static byte[] BuildScroll(ScrollMessage scroll)
+    {
+        var payload = new byte[ScrollPayloadSize];
+        BinaryPrimitives.WriteInt16BigEndian(payload, scroll.Dx);
+        BinaryPrimitives.WriteInt16BigEndian(payload.AsSpan(2), scroll.Dy);
         return payload;
     }
 

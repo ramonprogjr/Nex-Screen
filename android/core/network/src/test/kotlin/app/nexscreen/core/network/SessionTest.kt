@@ -89,6 +89,60 @@ class SessionTest {
     }
 
     @Test
+    fun inputIsSentOnlyWhileStreaming() = runBlocking {
+        val server = ServerSocket(0, 1, InetAddress.getLoopbackAddress())
+        val serverSaw = CopyOnWriteArrayList<RawMessage>()
+        val sawScroll = CompletableDeferred<Unit>()
+        val companion = thread {
+            server.accept().use { socket ->
+                val reader = MessageReader(socket.getInputStream())
+                reader.read()!! // HELLO
+                socket.getOutputStream().apply {
+                    write(Messages.encode(MessageType.HELLO_ACK, ServerMessage.HelloAck(1728, 1080, 30, 1, 0).encodePayload(), timestampUs = 1))
+                    flush()
+                }
+                while (true) {
+                    val message = reader.read() ?: break
+                    if (message.header.type == MessageType.STATS) continue
+                    serverSaw += message
+                    if (message.header.type == MessageType.SCROLL) {
+                        sawScroll.complete(Unit)
+                        break
+                    }
+                }
+            }
+        }
+
+        val session = NexLinkSession(
+            transportFactory = { TcpTransport(port = server.localPort) },
+            helloProvider = { Hello(1920, 1200, 240, 0) },
+            statsProvider = { Stats.EMPTY },
+            listener = object : NexLinkSession.Listener {
+                override fun onHelloAck(ack: ServerMessage.HelloAck) = Unit
+                override fun onCodecConfig(config: ServerMessage.CodecConfig) = Unit
+                override fun onFrame(frame: ServerMessage.Frame) = Unit
+            },
+        )
+        val down = PointerEvent(PointerEvent.ACTION_DOWN, 0, PointerEvent.BUTTON_LEFT, 100, 200)
+        assertEquals(false, session.sendInput(down)) // not connected: dropped
+
+        val job = launch(Dispatchers.IO) { session.run() }
+        withTimeout(5_000) {
+            session.state.first { it is ConnectionState.Streaming }
+            assertTrue(session.sendInput(down))
+            assertTrue(session.sendInput(ScrollEvent(0, -120)))
+            sawScroll.await()
+        }
+        job.cancelAndJoin()
+        companion.join(5_000)
+        server.close()
+
+        assertEquals(listOf(MessageType.POINTER, MessageType.SCROLL), serverSaw.map { it.header.type })
+        assertEquals(down, PointerEvent.decodePayload(serverSaw[0].payload))
+        assertEquals(ScrollEvent(0, -120), ScrollEvent.decodePayload(serverSaw[1].payload))
+    }
+
+    @Test
     fun retriesWhenNothingListens() = runBlocking {
         // Grab a free port and close it so connects are refused
         val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }

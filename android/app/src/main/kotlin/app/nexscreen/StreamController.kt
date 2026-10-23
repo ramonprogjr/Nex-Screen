@@ -4,6 +4,7 @@ import android.util.Log
 import android.view.Surface
 import app.nexscreen.core.network.ConnectionState
 import app.nexscreen.core.network.Hello
+import app.nexscreen.core.network.InputMessage
 import app.nexscreen.core.network.NexLinkSession
 import app.nexscreen.core.network.ServerMessage
 import app.nexscreen.core.network.Stats
@@ -106,6 +107,11 @@ class StreamController(private val scope: CoroutineScope) {
     fun stop() {
         job?.cancel()
         job = null
+    }
+
+    /** Forwards touch input to the companion; dropped while no session is streaming. Thread-safe. */
+    fun sendInput(message: InputMessage) {
+        session.sendInput(message)
     }
 
     /** Called on the main thread from the SurfaceHolder callbacks. */

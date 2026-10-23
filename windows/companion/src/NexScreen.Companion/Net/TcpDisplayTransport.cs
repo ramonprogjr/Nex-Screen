@@ -118,6 +118,12 @@ public sealed class TcpDisplayTransport(int port = NexLink.DefaultPort) : IDispl
                     case MessageType.Stats:
                         session.RaiseStats(NexLink.ParseStats(msg.Payload));
                         break;
+                    case MessageType.Pointer:
+                        session.RaisePointer(NexLink.ParsePointer(msg.Payload));
+                        break;
+                    case MessageType.Scroll:
+                        session.RaiseScroll(NexLink.ParseScroll(msg.Payload));
+                        break;
                     default:
                         throw new ProtocolException($"Unexpected {msg.Header.Type} after the handshake.");
                 }
@@ -213,10 +219,16 @@ internal sealed class TcpDisplaySession : IDisplaySession
 
     public event Action? KeyframeRequested;
     public event Action<ClientStats>? StatsReceived;
+    public event Action<PointerMessage>? PointerReceived;
+    public event Action<ScrollMessage>? ScrollReceived;
 
     internal void RaiseKeyframeRequested() => KeyframeRequested?.Invoke();
 
     internal void RaiseStats(ClientStats stats) => StatsReceived?.Invoke(stats);
+
+    internal void RaisePointer(PointerMessage pointer) => PointerReceived?.Invoke(pointer);
+
+    internal void RaiseScroll(ScrollMessage scroll) => ScrollReceived?.Invoke(scroll);
 
     internal void StartWriter() => _writer = Task.Run(WriteLoopAsync);
 

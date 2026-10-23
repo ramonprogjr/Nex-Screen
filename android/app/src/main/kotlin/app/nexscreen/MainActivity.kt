@@ -11,8 +11,6 @@ import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,15 +21,21 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.layout.boundsInParent
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -43,8 +47,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import app.nexscreen.core.input.TouchInputAdapter
+import app.nexscreen.core.input.VideoRect
 import app.nexscreen.core.network.ConnectionState
 import app.nexscreen.core.network.Hello
+import app.nexscreen.core.network.InputMessage
+import java.util.concurrent.atomic.AtomicReference
 
 class MainActivity : ComponentActivity() {
 
@@ -66,7 +74,7 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by controller.ui.collectAsState()
-            StreamScreen(state, surfaceCallback)
+            StreamScreen(state, surfaceCallback, controller::sendInput)
         }
     }
 
@@ -151,16 +159,30 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+/**
+ * Full-screen video with touch forwarding (gestures in core/input GestureInterpreter): tap = left click,
+ * drag = left drag, long-press = right click, two fingers = scroll, three-finger tap = show/hide the stats panel.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun StreamScreen(state: StreamUiState, surfaceCallback: SurfaceHolder.Callback) {
+private fun StreamScreen(state: StreamUiState, surfaceCallback: SurfaceHolder.Callback, sendInput: (InputMessage) -> Unit) {
     var hudVisible by rememberSaveable { mutableStateOf(true) }
+    // Where the SurfaceView (the video without the letterbox bars) sits inside the full-screen Box, in Box pixels
+    val videoBounds = remember { AtomicReference<VideoRect?>(null) }
+    val rendering by rememberUpdatedState(state.rendering)
+    val touch = remember {
+        TouchInputAdapter(
+            videoRect = { if (rendering) videoBounds.get() else null },
+            send = sendInput,
+            onThreeFingerTap = { hudVisible = !hudVisible },
+        )
+    }
+    DisposableEffect(touch) { onDispose { touch.cancel() } }
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                hudVisible = !hudVisible
-            },
+            .pointerInteropFilter { touch.onTouchEvent(it) },
         contentAlignment = Alignment.Center,
     ) {
         // Letterbox: the largest box with the stream's aspect ratio that fits the screen in either orientation
@@ -171,7 +193,10 @@ private fun StreamScreen(state: StreamUiState, surfaceCallback: SurfaceHolder.Ca
         }
         AndroidView(
             factory = { context -> SurfaceView(context).apply { holder.addCallback(surfaceCallback) } },
-            modifier = videoModifier,
+            modifier = videoModifier.onGloballyPositioned { coordinates ->
+                val b = coordinates.boundsInParent()
+                videoBounds.set(VideoRect(b.left, b.top, b.width, b.height))
+            },
         )
 
         if (!state.rendering) {
@@ -237,5 +262,6 @@ private fun Hud(state: StreamUiState, modifier: Modifier) {
             text = stringResource(R.string.hud_latency, state.latencyP50Ms, state.latencyP95Ms, state.framesDropped),
             style = style,
         )
+        BasicText(text = stringResource(R.string.hud_hint), style = style.copy(color = Color(0xFFB0BEC5)))
     }
 }

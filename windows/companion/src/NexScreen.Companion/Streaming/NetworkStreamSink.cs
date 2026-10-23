@@ -39,6 +39,18 @@ public sealed class NetworkStreamSink : IEncodedStreamSink
         }
     }
 
+    /// <summary>
+    /// True once HELLO_ACK + CODEC_CONFIG went to this session, i.e. the client knows what it is showing. Input
+    /// from a client is only meaningful (and only injected) from then on.
+    /// </summary>
+    public bool HasAnnouncedFormat(IDisplaySession session)
+    {
+        lock (_gate)
+        {
+            return _session == session && _announced is not null;
+        }
+    }
+
     public bool TakeKeyframeRequest()
     {
         lock (_gate)

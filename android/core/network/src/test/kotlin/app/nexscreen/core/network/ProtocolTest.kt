@@ -184,6 +184,55 @@ class ProtocolTest {
         }
     }
 
+    @Test
+    fun pointerPayloadLayout() {
+        val event = PointerEvent(PointerEvent.ACTION_MOVE, pointerId = 3, buttons = PointerEvent.BUTTON_LEFT, xNorm = 0x8000, yNorm = 0xFFFF)
+        val message = Messages.pointer(event, timestampUs = 5)
+        assertEquals(NexLink.HEADER_SIZE + PointerEvent.PAYLOAD_SIZE, message.size)
+        val header = Header.decode(message)
+        assertEquals(MessageType.POINTER, header.type)
+        assertEquals(PointerEvent.PAYLOAD_SIZE, header.length)
+        assertEquals(5L, header.timestampUs)
+        val payload = message.copyOfRange(NexLink.HEADER_SIZE, message.size)
+        assertArrayEquals(byteArrayOf(0x01, 0x03, 0x00, 0x01, 0x80.toByte(), 0x00, 0xFF.toByte(), 0xFF.toByte()), payload)
+        assertEquals(event, PointerEvent.decodePayload(payload))
+    }
+
+    @Test
+    fun pointerValidation() {
+        assertProtocolError { PointerEvent.decodePayload(byteArrayOf(4, 0, 0, 0, 0, 0, 0, 0)) } // action out of range
+        assertProtocolError { PointerEvent.decodePayload(byteArrayOf(0, 0, 0, 8, 0, 0, 0, 0)) } // unknown button bit
+        assertProtocolError { PointerEvent.decodePayload(ByteArray(7)) }
+        assertProtocolError { PointerEvent.decodePayload(ByteArray(9)) }
+        for (bad in listOf({ PointerEvent(4, 0, 0, 0, 0) }, { PointerEvent(0, 256, 0, 0, 0) },
+            { PointerEvent(0, 0, 8, 0, 0) }, { PointerEvent(0, 0, 0, 65_536, 0) }, { PointerEvent(0, 0, 0, 0, -1) })) {
+            try {
+                bad()
+                fail("expected IllegalArgumentException")
+            } catch (_: IllegalArgumentException) {
+            }
+        }
+    }
+
+    @Test
+    fun scrollPayloadIsSignedBigEndian() {
+        val event = ScrollEvent(dx = -120, dy = 240)
+        val message = Messages.scroll(event, timestampUs = 9)
+        assertEquals(MessageType.SCROLL, Header.decode(message).type)
+        val payload = message.copyOfRange(NexLink.HEADER_SIZE, message.size)
+        assertArrayEquals(byteArrayOf(0xFF.toByte(), 0x88.toByte(), 0x00, 0xF0.toByte()), payload)
+        assertEquals(event, ScrollEvent.decodePayload(payload))
+        assertProtocolError { ScrollEvent.decodePayload(ByteArray(5)) }
+        assertEquals(ScrollEvent(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt()),
+            ScrollEvent.decodePayload(byteArrayOf(0x80.toByte(), 0, 0x7F, 0xFF.toByte())))
+    }
+
+    @Test
+    fun rejectsInputMessagesFromServer() {
+        assertProtocolError { parse(MessageType.POINTER, PointerEvent(0, 0, 1, 0, 0).encodePayload()) }
+        assertProtocolError { parse(MessageType.SCROLL, ScrollEvent(0, 120).encodePayload()) }
+    }
+
     private fun parse(type: Int, payload: ByteArray) =
         Messages.parseServerMessage(Header(type, 0, payload.size, 0), payload)
 

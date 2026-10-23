@@ -25,3 +25,4 @@ rootProject.name = "nexscreen"
 include(":app")
 include(":core:network")
 include(":core:video")
+include(":core:input")

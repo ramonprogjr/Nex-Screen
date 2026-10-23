@@ -53,8 +53,10 @@ cd android
 .\gradlew.bat assembleDebug test lintDebug
 ```
 
-Os testes de `:core:network` rodam na JVM: cabeçalho, HELLO/STATS, rejeição de versão, tipo e tamanho inválidos,
-leituras parciais e uma sessão completa contra um servidor TCP local.
+Os testes de `:core:network` rodam na JVM: cabeçalho, HELLO/STATS/POINTER/SCROLL, rejeição de versão, tipo e
+tamanho inválidos, leituras parciais e uma sessão completa contra um servidor TCP local. Os de `:core:input` cobrem
+o interpretador de gestos (toque, arraste, toque longo, rolagem com dois dedos, toque com três dedos, limite de
+120 Hz e o mapeamento com faixas pretas).
 
 ## Uso
 
@@ -62,8 +64,24 @@ leituras parciais e uma sessão completa contra um servidor TCP local.
 2. Abra o **NexScreen** no tablet. Ele mostra "Aguardando o NexScreen no notebook…" e tenta conectar sozinho.
 3. Inicie o companion no Windows. A imagem aparece em alguns instantes.
 
-Toque na tela para mostrar ou esconder o painel com resolução, FPS exibidos, latência de decodificação e quadros
-descartados. O app pode girar livremente: o vídeo mantém a proporção, com faixas pretas quando necessário.
+O app pode girar livremente: o vídeo mantém a proporção, com faixas pretas quando necessário.
+
+### Toque (M3)
+
+Tocar no vídeo controla o mouse no monitor capturado (o módulo `:core:input` interpreta os gestos e o companion
+injeta o mouse, ver [Entrada](../protocol/nexlink-v0-usb.md#entrada-m3)):
+
+| Gesto no tablet | No Windows |
+|---|---|
+| Toque rápido | Clique esquerdo |
+| Arrastar um dedo | Arrastar com o botão esquerdo pressionado, a partir do ponto onde o dedo encostou |
+| Segurar ~0,5 s sem mover | Clique direito |
+| Dois dedos | Roda do mouse, vertical e horizontal; o conteúdo acompanha os dedos |
+| **Três dedos, toque rápido** | Mostra ou esconde o painel com resolução, FPS, latência de decodificação e quadros descartados |
+
+Toques nas faixas pretas são ignorados. Para testar sem as mãos: `adb shell input tap 960 600` (clique no centro)
+e `adb shell input swipe 400 900 1500 300 600` (arraste). O companion com `--verbose` registra cada clique com a
+coordenada normalizada e o pixel do desktop.
 
 ## Limite do decodificador do Tab A9+
 

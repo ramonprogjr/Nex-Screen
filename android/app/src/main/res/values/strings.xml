@@ -10,5 +10,6 @@
     <string name="status_streaming_starting">Recebendo vídeo %1$d×%2$d a %3$d FPS. Aguardando o primeiro quadro…</string>
     <string name="status_decoder_unavailable">O decodificador de vídeo do tablet não aceita %1$d×%2$d. Escolha uma resolução menor no NexScreen do Windows (o limite do Tab A9+ é 1920×1088, por exemplo 1728×1080).</string>
     <string name="hud_streaming">%1$d×%2$d · %3$d FPS · exibindo %4$.1f FPS</string>
+    <string name="hud_hint">Toque com 3 dedos para esconder ou mostrar este painel</string>
     <string name="hud_latency">Decodificação p50 %1$.1f ms · p95 %2$.1f ms · descartados %3$d</string>
 </resources>

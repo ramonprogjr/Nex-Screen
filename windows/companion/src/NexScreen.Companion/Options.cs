@@ -7,7 +7,7 @@ public sealed class Options
 {
     public bool List { get; private set; }
     public bool Help { get; private set; }
-    public string Output { get; private set; } = "nexscreen";
+    public string Output { get; private set; } = "auto";
     public int Fps { get; private set; } = 30;
     public int Bitrate { get; private set; } = 8_000_000;
     public int? GopFrames { get; private set; }
@@ -26,6 +26,12 @@ public sealed class Options
     public bool LogFile { get; private set; } = true;
     public bool Verbose { get; private set; }
 
+    /// <summary>Inject the tablet's touch input as mouse input on the captured output. --no-input turns it off.</summary>
+    public bool InjectInput { get; private set; } = true;
+
+    /// <summary>Draw the mouse pointer into the video (Desktop Duplication leaves it out). --no-cursor turns it off.</summary>
+    public bool DrawCursor { get; private set; } = true;
+
     public int EffectiveGop => GopFrames ?? Fps * 10;
 
     public const string Usage = """
@@ -33,7 +39,8 @@ public sealed class Options
 
         Usage: NexScreen.Companion [options]
           --list                 List outputs (name, resolution, refresh, adapter) and encoders, then exit.
-          --output <sel>         nexscreen (default: EDID name "NexScreen" / manufacturer NXS), primary, or \\.\DISPLAYn
+          --output <sel>         auto (default: NexScreen monitor, else the VDD virtual monitor), nexscreen (EDID
+                                 name "NexScreen" / manufacturer NXS), vdd (EDID manufacturer MTT), primary, or \\.\DISPLAYn
           --fps <n>              Maximum frame rate, 1-60 (default 30).
           --bitrate <v>          Target bitrate: bps, or with k/M suffix (default 8M).
           --gop <frames>         Keyframe interval in frames (default fps*10); IDRs are also sent on demand.
@@ -46,6 +53,8 @@ public sealed class Options
           --dump <file.h264>     Write the Annex-B stream to a file instead of serving clients.
           --seconds <n>          Dump duration (default 10).
           --port <n>             TCP port (default 27183; always bound to 127.0.0.1).
+          --no-cursor            Do not draw the mouse pointer into the video.
+          --no-input             Do not turn touches on the tablet into mouse input on Windows.
           --no-log-file          Do not write %LOCALAPPDATA%\NexScreen\logs\companion-*.log.
           --verbose              Debug logging.
         """;
@@ -120,6 +129,12 @@ public sealed class Options
                     break;
                 case "--port":
                     o.Port = ParseInt(a, Next(), 1, 65_535);
+                    break;
+                case "--no-cursor":
+                    o.DrawCursor = false;
+                    break;
+                case "--no-input":
+                    o.InjectInput = false;
                     break;
                 case "--no-log-file":
                     o.LogFile = false;

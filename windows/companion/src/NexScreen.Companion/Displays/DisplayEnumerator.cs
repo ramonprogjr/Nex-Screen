@@ -22,12 +22,19 @@ public sealed record DisplayOutputInfo(
     public bool IsNexScreen =>
         string.Equals(FriendlyName, DisplayEnumerator.NexScreenMonitorName, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(EdidManufacturer, DisplayEnumerator.NexScreenManufacturer, StringComparison.Ordinal);
+
+    /// <summary>Monitor of the signed Virtual Display Driver (MttVDD) used until the NexScreen driver is signed.</summary>
+    public bool IsVdd =>
+        string.Equals(EdidManufacturer, DisplayEnumerator.VddManufacturer, StringComparison.Ordinal) ||
+        FriendlyName.StartsWith(DisplayEnumerator.VddMonitorNamePrefix, StringComparison.OrdinalIgnoreCase);
 }
 
 public static class DisplayEnumerator
 {
     public const string NexScreenMonitorName = "NexScreen";
     public const string NexScreenManufacturer = "NXS";
+    public const string VddManufacturer = "MTT";
+    public const string VddMonitorNamePrefix = "VDD by MTT";
 
     /// <summary>Lists DXGI outputs attached to the desktop, enriched with DisplayConfig monitor names.</summary>
     public static List<DisplayOutputInfo> Enumerate()
@@ -89,11 +96,22 @@ public static class DisplayEnumerator
     }
 
     /// <summary>
-    /// Resolves the selector: "nexscreen" (default, by EDID name/manufacturer), "primary", or a GDI name like \\.\DISPLAY2.
+    /// Resolves the selector: "auto" (default: the NexScreen monitor, else the VDD virtual monitor), "nexscreen"
+    /// (by EDID name/manufacturer), "vdd", "primary", or a GDI name like \\.\DISPLAY2.
     /// </summary>
     public static DisplayOutputInfo? Find(string selector, List<DisplayOutputInfo>? outputs = null)
     {
         outputs ??= Enumerate();
+        if (string.Equals(selector, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return outputs.FirstOrDefault(o => o.IsNexScreen) ?? outputs.FirstOrDefault(o => o.IsVdd);
+        }
+
+        if (string.Equals(selector, "vdd", StringComparison.OrdinalIgnoreCase))
+        {
+            return outputs.FirstOrDefault(o => o.IsVdd);
+        }
+
         if (string.Equals(selector, "nexscreen", StringComparison.OrdinalIgnoreCase))
         {
             return outputs.FirstOrDefault(o => o.IsNexScreen);

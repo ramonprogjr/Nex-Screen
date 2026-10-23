@@ -19,12 +19,14 @@ object MessageType {
     const val HELLO = 0x01
     const val REQUEST_KEYFRAME = 0x10
     const val STATS = 0x11
+    const val POINTER = 0x20
+    const val SCROLL = 0x21
     const val HELLO_ACK = 0x81
     const val CODEC_CONFIG = 0x82
     const val FRAME = 0x83
 
     fun isKnown(type: Int): Boolean = when (type) {
-        HELLO, REQUEST_KEYFRAME, STATS, HELLO_ACK, CODEC_CONFIG, FRAME -> true
+        HELLO, REQUEST_KEYFRAME, STATS, POINTER, SCROLL, HELLO_ACK, CODEC_CONFIG, FRAME -> true
         else -> false
     }
 }

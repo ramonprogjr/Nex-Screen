@@ -74,6 +74,13 @@ class NexLinkSession(
 
     private val keyframeRequests = Channel<Unit>(Channel.CONFLATED)
 
+    // Touch input waiting to be written. Bounded so a stalled connection cannot grow it without limit.
+    private val inputQueue = Channel<InputMessage>(INPUT_QUEUE_CAPACITY)
+
+    // True between HELLO_ACK and the end of the connection: input is only accepted while the video is live
+    @Volatile
+    private var inputOpen = false
+
     // Set once HELLO_ACK arrives on the current connection
     @Volatile
     private var established = false
@@ -82,6 +89,13 @@ class NexLinkSession(
     fun requestKeyframe() {
         keyframeRequests.trySend(Unit)
     }
+
+    /**
+     * Queues a POINTER or SCROLL message for the companion. Thread-safe and non-blocking. Returns false (and drops
+     * the message) when no session is established or the queue is full; input is never replayed on a later
+     * connection.
+     */
+    fun sendInput(message: InputMessage): Boolean = inputOpen && inputQueue.trySend(message).isSuccess
 
     /** Runs until the calling coroutine is cancelled. */
     suspend fun run() {
@@ -103,6 +117,7 @@ class NexLinkSession(
                 } catch (e: IllegalArgumentException) {
                     e.message ?: e.javaClass.simpleName
                 } finally {
+                    inputOpen = false
                     withContext(NonCancellable) {
                         transport.disconnect()
                         listener.onDisconnected()
@@ -145,12 +160,19 @@ class NexLinkSession(
         if (first == null) throw IOException("closed before HELLO_ACK")
         if (first !is ServerMessage.HelloAck) throw ProtocolException("expected HELLO_ACK first")
         established = true
+        while (inputQueue.tryReceive().isSuccess) Unit // stale input from a previous connection
+        inputOpen = true
         dispatch(first)
 
         launch {
             while (true) {
                 delay(statsIntervalMs)
                 transport.sendControl(Messages.stats(statsProvider(), clock.nowUs()))
+            }
+        }
+        launch {
+            for (message in inputQueue) {
+                transport.sendControl(Messages.input(message, clock.nowUs()))
             }
         }
         launch {
@@ -165,6 +187,10 @@ class NexLinkSession(
             dispatch(message)
         }
         coroutineContext.cancelChildren()
+    }
+
+    private companion object {
+        const val INPUT_QUEUE_CAPACITY = 1024
     }
 
     private fun dispatch(message: ServerMessage) {

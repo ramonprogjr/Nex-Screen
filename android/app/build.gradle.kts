@@ -44,6 +44,7 @@ kotlin {
 dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:video"))
+    implementation(project(":core:input"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

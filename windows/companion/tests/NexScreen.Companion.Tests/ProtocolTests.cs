@@ -161,6 +161,73 @@ public class ProtocolTests
         await Assert.ThrowsAsync<EndOfStreamException>(() => new NexLinkReader(new MemoryStream(new byte[7])).ReadAsync(CancellationToken.None));
     }
 
+    [Fact]
+    public void Pointer_LayoutAndRoundTrip()
+    {
+        var pointer = new PointerMessage(PointerAction.Move, 3, PointerButtons.Left, 0x8000, 0xFFFF);
+        var bytes = NexLink.BuildPointer(pointer);
+        Assert.Equal(new byte[] { 0x01, 0x03, 0x00, 0x01, 0x80, 0x00, 0xFF, 0xFF }, bytes);
+        Assert.Equal(pointer, NexLink.ParsePointer(bytes));
+    }
+
+    [Theory]
+    [InlineData(new byte[] { 4, 0, 0, 0, 0, 0, 0, 0 })] // action out of range
+    [InlineData(new byte[] { 0xFF, 0, 0, 0, 0, 0, 0, 0 })]
+    [InlineData(new byte[] { 0, 0, 0, 8, 0, 0, 0, 0 })] // unknown button bit
+    [InlineData(new byte[] { 0, 0, 0x80, 0, 0, 0, 0, 0 })]
+    [InlineData(new byte[] { 0, 0, 0, 0, 0, 0, 0 })] // 7 bytes
+    [InlineData(new byte[] { 0, 0, 0, 0, 0, 0, 0, 0, 0 })] // 9 bytes
+    public void Pointer_RejectsInvalid(byte[] payload)
+    {
+        Assert.Throws<ProtocolException>(() => NexLink.ParsePointer(payload));
+    }
+
+    [Fact]
+    public void Scroll_IsSignedBigEndian()
+    {
+        var bytes = NexLink.BuildScroll(new ScrollMessage(-120, 240));
+        Assert.Equal(new byte[] { 0xFF, 0x88, 0x00, 0xF0 }, bytes);
+        Assert.Equal(new ScrollMessage(-120, 240), NexLink.ParseScroll(bytes));
+        Assert.Equal(new ScrollMessage(short.MinValue, short.MaxValue), NexLink.ParseScroll(new byte[] { 0x80, 0, 0x7F, 0xFF }));
+        Assert.Throws<ProtocolException>(() => NexLink.ParseScroll(new byte[3]));
+    }
+
+    [Fact]
+    public async Task Reader_AcceptsInputMessages()
+    {
+        var pointer = NexLink.BuildPointer(new PointerMessage(PointerAction.Down, 0, PointerButtons.Right, 1, 2));
+        var scroll = NexLink.BuildScroll(new ScrollMessage(0, 120));
+        var data = Concat(
+            NexLink.BuildHeader(MessageType.Pointer, 0, (uint)pointer.Length, 1), pointer,
+            NexLink.BuildHeader(MessageType.Scroll, 0, (uint)scroll.Length, 2), scroll);
+        var reader = new NexLinkReader(new TrickleStream(data));
+
+        var m1 = await reader.ReadAsync(CancellationToken.None);
+        var m2 = await reader.ReadAsync(CancellationToken.None);
+        Assert.Equal(new PointerMessage(PointerAction.Down, 0, PointerButtons.Right, 1, 2), NexLink.ParsePointer(m1!.Payload));
+        Assert.Equal(new ScrollMessage(0, 120), NexLink.ParseScroll(m2!.Payload));
+    }
+
+    [Theory]
+    [InlineData(MessageType.Pointer, 7u)]
+    [InlineData(MessageType.Pointer, 9u)]
+    [InlineData(MessageType.Scroll, 0u)]
+    [InlineData(MessageType.Scroll, 8u)]
+    public async Task Reader_RejectsWrongInputPayloadSize(MessageType type, uint length)
+    {
+        var data = Concat(NexLink.BuildHeader(type, 0, length, 0), new byte[length]);
+        await Assert.ThrowsAsync<ProtocolException>(() => new NexLinkReader(new MemoryStream(data)).ReadAsync(CancellationToken.None));
+    }
+
+    [Fact]
+    public void Input_TypesAreKnownClientToServerTypes()
+    {
+        Assert.True(NexLink.IsClientToServer(MessageType.Pointer));
+        Assert.True(NexLink.IsClientToServer(MessageType.Scroll));
+        Assert.Equal(HeaderStatus.Ok, NexLink.TryParseHeader(NexLink.BuildHeader(MessageType.Pointer, 0, 8, 0), out _));
+        Assert.Equal(HeaderStatus.Ok, NexLink.TryParseHeader(NexLink.BuildHeader(MessageType.Scroll, 0, 4, 0), out _));
+    }
+
     private static byte[] Concat(params byte[][] parts) => parts.SelectMany(p => p).ToArray();
 
     /// <summary>Returns at most one byte per read, to exercise partial reads.</summary>

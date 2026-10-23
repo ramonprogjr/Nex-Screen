@@ -59,6 +59,13 @@ adb reverse tcp:27183 tcp:27183                                    # liga a port
   `--output \.\DISPLAYn`.
 - Opções principais: `--fps` (padrão 30), `--bitrate` (padrão `8M`), `--gop` (padrão fps×10), `--size WxH`,
   `--profile main|high`, `--level 4.2`, `--encoder auto|hardware|software`, `--port`. Veja `--help`.
+- O ponteiro do mouse é desenhado no vídeo (a captura o deixa de fora) e movê-lo gera quadros novos; `--no-cursor` desliga.
+- Toques no tablet viram mouse no monitor capturado (M3): `POINTER`/`SCROLL` do NexLink são mapeados para o retângulo
+  do monitor no desktop (DXGI `DesktopCoordinates`, mesmo seletor `--output` da captura) e injetados com `SendInput`
+  (`MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK`, roda e roda horizontal). O processo é *per-monitor DPI aware*
+  (PerMonitorV2 no `app.manifest`), então funciona com escala diferente em cada monitor e origens negativas. Botões
+  pressionados são soltos quando o tablet desconecta. `--no-input` desliga a injeção. O `SendInput` não alcança a
+  tela de UAC/bloqueio nem janelas elevadas (UIPI) enquanto o companion roda sem privilégios.
 - O `--dump` grava o stream Annex-B (CODEC_CONFIG + quadros) sem cliente. Para conferir:
   `ffprobe -show_streams test.h264` e `ffmpeg -v error -i test.h264 -f null -` (não deve imprimir nada).
 - O log vai para o console e para `%LOCALAPPDATA%\NexScreen\logs\companion-AAAAMMDD.log` (`--no-log-file` desliga).

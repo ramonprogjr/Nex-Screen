@@ -10,7 +10,7 @@ public class OptionsTests
     public void Defaults()
     {
         var o = Options.Parse([]);
-        Assert.Equal("nexscreen", o.Output);
+        Assert.Equal("auto", o.Output);
         Assert.Equal(30, o.Fps);
         Assert.Equal(8_000_000, o.Bitrate);
         Assert.Equal(300, o.EffectiveGop);

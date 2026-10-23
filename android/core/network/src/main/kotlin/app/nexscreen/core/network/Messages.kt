@@ -66,6 +66,85 @@ data class Stats(
     }
 }
 
+/** Input the tablet forwards to the companion (POINTER and SCROLL). */
+sealed interface InputMessage
+
+/**
+ * POINTER payload. Coordinates are normalized to 0..65535 across the displayed video (letterbox bars excluded),
+ * 0,0 being the top-left of the video. [buttons] is the button state after this event.
+ */
+data class PointerEvent(
+    val action: Int,
+    val pointerId: Int,
+    val buttons: Int,
+    val xNorm: Int,
+    val yNorm: Int,
+) : InputMessage {
+    init {
+        require(action in ACTION_DOWN..ACTION_CANCEL) { "action must be 0..3, was $action" }
+        require(pointerId in 0..0xFF) { "pointerId out of u8 range: $pointerId" }
+        require(buttons and BUTTON_MASK.inv() == 0) { "unknown button bits in $buttons" }
+        requireU16(xNorm, "xNorm")
+        requireU16(yNorm, "yNorm")
+    }
+
+    fun encodePayload(): ByteArray = ByteBuffer.allocate(PAYLOAD_SIZE).order(ByteOrder.BIG_ENDIAN)
+        .put(action.toByte())
+        .put(pointerId.toByte())
+        .putShort(buttons.toShort())
+        .putShort(xNorm.toShort())
+        .putShort(yNorm.toShort())
+        .array()
+
+    companion object {
+        const val PAYLOAD_SIZE = 8
+        const val ACTION_DOWN = 0
+        const val ACTION_MOVE = 1
+        const val ACTION_UP = 2
+        const val ACTION_CANCEL = 3
+        const val BUTTON_LEFT = 0x1
+        const val BUTTON_RIGHT = 0x2
+        const val BUTTON_MIDDLE = 0x4
+        const val BUTTON_MASK = BUTTON_LEFT or BUTTON_RIGHT or BUTTON_MIDDLE
+        const val MAX_NORM = 0xFFFF
+
+        fun decodePayload(payload: ByteArray): PointerEvent {
+            if (payload.size != PAYLOAD_SIZE) throw ProtocolException("POINTER payload must be $PAYLOAD_SIZE bytes")
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN)
+            val action = buffer.get().toInt() and 0xFF
+            val id = buffer.get().toInt() and 0xFF
+            val buttons = buffer.u16()
+            if (action > ACTION_CANCEL) throw ProtocolException("Invalid POINTER action $action")
+            if (buttons and BUTTON_MASK.inv() != 0) throw ProtocolException("Invalid POINTER buttons $buttons")
+            return PointerEvent(action, id, buttons, buffer.u16(), buffer.u16())
+        }
+    }
+}
+
+/** SCROLL payload in wheel units (120 = one notch). Positive [dy] scrolls up, positive [dx] scrolls right. */
+data class ScrollEvent(val dx: Int, val dy: Int) : InputMessage {
+    init {
+        require(dx in Short.MIN_VALUE..Short.MAX_VALUE) { "dx out of i16 range: $dx" }
+        require(dy in Short.MIN_VALUE..Short.MAX_VALUE) { "dy out of i16 range: $dy" }
+    }
+
+    fun encodePayload(): ByteArray = ByteBuffer.allocate(PAYLOAD_SIZE).order(ByteOrder.BIG_ENDIAN)
+        .putShort(dx.toShort())
+        .putShort(dy.toShort())
+        .array()
+
+    companion object {
+        const val PAYLOAD_SIZE = 4
+        const val WHEEL_DELTA = 120
+
+        fun decodePayload(payload: ByteArray): ScrollEvent {
+            if (payload.size != PAYLOAD_SIZE) throw ProtocolException("SCROLL payload must be $PAYLOAD_SIZE bytes")
+            val buffer = ByteBuffer.wrap(payload).order(ByteOrder.BIG_ENDIAN)
+            return ScrollEvent(buffer.getShort().toInt(), buffer.getShort().toInt())
+        }
+    }
+}
+
 /** Messages the companion sends to the tablet. */
 sealed interface ServerMessage {
     val timestampUs: Long
@@ -117,6 +196,17 @@ object Messages {
 
     fun stats(stats: Stats, timestampUs: Long): ByteArray =
         encode(MessageType.STATS, stats.encodePayload(), timestampUs = timestampUs)
+
+    fun pointer(event: PointerEvent, timestampUs: Long): ByteArray =
+        encode(MessageType.POINTER, event.encodePayload(), timestampUs = timestampUs)
+
+    fun scroll(event: ScrollEvent, timestampUs: Long): ByteArray =
+        encode(MessageType.SCROLL, event.encodePayload(), timestampUs = timestampUs)
+
+    fun input(message: InputMessage, timestampUs: Long): ByteArray = when (message) {
+        is PointerEvent -> pointer(message, timestampUs)
+        is ScrollEvent -> scroll(message, timestampUs)
+    }
 
     /** Parses a message received by the client. Client-to-server types are a protocol error here. */
     fun parseServerMessage(header: Header, payload: ByteArray): ServerMessage = when (header.type) {
