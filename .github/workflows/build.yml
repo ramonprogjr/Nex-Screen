@@ -1,0 +1,73 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Driver + companion (Windows)
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build driver (WDK, x64 Release)
+        shell: pwsh
+        run: ./tools/build-driver.ps1 -Configuration Release
+
+      - name: EDID tests
+        shell: pwsh
+        run: python -m unittest discover -s driver/virtual-display/tests -v
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Companion tests
+        shell: pwsh
+        run: dotnet test windows/NexScreen.sln -c Release --nologo
+
+      - name: Publish companion (self-contained, win-x64)
+        shell: pwsh
+        run: >
+          dotnet publish windows/companion/src/NexScreen.Companion/NexScreen.Companion.csproj
+          -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+          -o out/companion --nologo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexscreen-driver-unsigned
+          path: out/driver/
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexscreen-companion-win-x64
+          path: out/companion/
+          if-no-files-found: error
+
+  android:
+    name: Android app
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '17'
+
+      - name: Build and test
+        working-directory: android
+        run: bash ./gradlew --no-daemon assembleDebug test lintDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexscreen-android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
