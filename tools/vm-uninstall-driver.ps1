@@ -21,10 +21,12 @@ if (Test-Path $localCtl) {
     $ctl = $localCtl
 }
 if (Test-Path $ctl) {
-    & $ctl remove
+    # Root-enumerated device ('install') and any software device from 'create'
+    & $ctl uninstall
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "nexscreen-vdd-ctl remove failed (exit code $LASTEXITCODE); continuing with the driver package."
+        Write-Warning "nexscreen-vdd-ctl uninstall failed (exit code $LASTEXITCODE); continuing with the driver package."
     }
+    & $ctl remove 2>$null | Out-Null
 } else {
     Write-Warning "$ctl not found; skipping device removal."
 }

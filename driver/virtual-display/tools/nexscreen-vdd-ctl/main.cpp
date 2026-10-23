@@ -3,18 +3,30 @@
 // Derived from IddSampleApp in microsoft/Windows-driver-samples video/IndirectDisplay (MS-PL). See ../../THIRD_PARTY.md.
 //
 // Usage (administrator):
-//   nexscreen-vdd-ctl run      create the device; it is removed on 'x' or when the process exits
-//   nexscreen-vdd-ctl create   create the device and keep it after the process exits
-//   nexscreen-vdd-ctl remove   remove a device previously created with 'create'
+//   nexscreen-vdd-ctl install [inf]  install the driver on a root-enumerated device (persists across reboots)
+//   nexscreen-vdd-ctl uninstall      remove the root-enumerated device(s)
+//   nexscreen-vdd-ctl run            software device; removed on 'x' or when the process exits
+//   nexscreen-vdd-ctl create         software device kept after the process exits (until reboot or 'remove')
+//   nexscreen-vdd-ctl remove         remove the software device created with 'create'
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 #include <windows.h>
 #include <swdevice.h>
 #include <conio.h>
+#include <initguid.h>
+#include <devguid.h>
+#include <setupapi.h>
+#include <newdev.h>
 
 namespace
 {
+    // Hardware ID of the root-enumerated device; listed in NexScreenVDD.inf
+    constexpr wchar_t c_rootHardwareIds[] = L"Root\\NexScreenVDD\0";
+    constexpr PCWSTR c_rootHardwareId = L"Root\\NexScreenVDD";
+
     // These match the PnP ids in NexScreenVDD.inf so the OS loads the driver when the device is created
     constexpr PCWSTR c_enumeratorName = L"NexScreenVDD";
     constexpr PCWSTR c_parentDeviceInstance = L"HTREE\\ROOT\\0";
@@ -176,24 +188,171 @@ namespace
         return 0;
     }
 
+    // True if the REG_MULTI_SZ hardware ID list of the device contains c_rootHardwareId
+    bool HasRootHardwareId(HDEVINFO set, SP_DEVINFO_DATA* data)
+    {
+        wchar_t buffer[1024] = {};
+        if (!SetupDiGetDeviceRegistryPropertyW(set, data, SPDRP_HARDWAREID, nullptr,
+                                               reinterpret_cast<BYTE*>(buffer), sizeof(buffer) - sizeof(wchar_t) * 2, nullptr))
+        {
+            return false;
+        }
+
+        for (const wchar_t* id = buffer; *id; id += wcslen(id) + 1)
+        {
+            if (_wcsicmp(id, c_rootHardwareId) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Number of root-enumerated NexScreen devices, present or not
+    int CountRootDevices()
+    {
+        HDEVINFO set = SetupDiGetClassDevsW(&GUID_DEVCLASS_DISPLAY, nullptr, nullptr, 0);
+        if (set == INVALID_HANDLE_VALUE)
+        {
+            return 0;
+        }
+
+        int count = 0;
+        SP_DEVINFO_DATA data = { sizeof(data) };
+        for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &data); i++)
+        {
+            if (HasRootHardwareId(set, &data))
+            {
+                count++;
+            }
+        }
+        SetupDiDestroyDeviceInfoList(set);
+        return count;
+    }
+
+    std::wstring DefaultInfPath()
+    {
+        wchar_t exe[MAX_PATH] = {};
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+        std::wstring path(exe);
+        path.resize(path.find_last_of(L'\\') + 1);
+        return path + L"NexScreenVDD.inf";
+    }
+
+    int Install(const std::wstring& infArg)
+    {
+        wchar_t inf[MAX_PATH] = {};
+        if (!GetFullPathNameW(infArg.c_str(), MAX_PATH, inf, nullptr) ||
+            GetFileAttributesW(inf) == INVALID_FILE_ATTRIBUTES)
+        {
+            fwprintf(stderr, L"INF not found: %s\n", infArg.c_str());
+            return 1;
+        }
+
+        // Create the device node once; afterwards only (re)install the driver on it
+        if (CountRootDevices() == 0)
+        {
+            HDEVINFO set = SetupDiCreateDeviceInfoList(&GUID_DEVCLASS_DISPLAY, nullptr);
+            if (set == INVALID_HANDLE_VALUE)
+            {
+                fprintf(stderr, "SetupDiCreateDeviceInfoList failed: %lu\n", GetLastError());
+                return 1;
+            }
+
+            SP_DEVINFO_DATA data = { sizeof(data) };
+            bool ok = SetupDiCreateDeviceInfoW(set, L"Display", &GUID_DEVCLASS_DISPLAY, c_description, nullptr,
+                                               DICD_GENERATE_ID, &data) &&
+                      SetupDiSetDeviceRegistryPropertyW(set, &data, SPDRP_HARDWAREID,
+                                                        reinterpret_cast<const BYTE*>(c_rootHardwareIds),
+                                                        sizeof(c_rootHardwareIds)) &&
+                      SetupDiCallClassInstaller(DIF_REGISTERDEVICE, set, &data);
+            DWORD error = GetLastError();
+            SetupDiDestroyDeviceInfoList(set);
+            if (!ok)
+            {
+                fprintf(stderr, "Creating the root device failed: %lu\n", error);
+                return 1;
+            }
+            printf("Root device created\n");
+        }
+
+        BOOL reboot = FALSE;
+        if (!UpdateDriverForPlugAndPlayDevicesW(nullptr, c_rootHardwareId, inf, INSTALLFLAG_FORCE, &reboot))
+        {
+            fprintf(stderr, "UpdateDriverForPlugAndPlayDevices failed: %lu\n", GetLastError());
+            return 1;
+        }
+
+        printf("Driver installed on the root device%s\n", reboot ? " (reboot required)" : "");
+        return 0;
+    }
+
+    int Uninstall()
+    {
+        HDEVINFO set = SetupDiGetClassDevsW(&GUID_DEVCLASS_DISPLAY, nullptr, nullptr, 0);
+        if (set == INVALID_HANDLE_VALUE)
+        {
+            fprintf(stderr, "SetupDiGetClassDevs failed: %lu\n", GetLastError());
+            return 1;
+        }
+
+        int removed = 0;
+        int failed = 0;
+        SP_DEVINFO_DATA data = { sizeof(data) };
+        for (DWORD i = 0; SetupDiEnumDeviceInfo(set, i, &data); i++)
+        {
+            if (!HasRootHardwareId(set, &data))
+            {
+                continue;
+            }
+
+            BOOL reboot = FALSE;
+            if (DiUninstallDevice(nullptr, set, &data, 0, &reboot))
+            {
+                removed++;
+            }
+            else
+            {
+                fprintf(stderr, "DiUninstallDevice failed: %lu\n", GetLastError());
+                failed++;
+            }
+        }
+        SetupDiDestroyDeviceInfoList(set);
+
+        printf("Removed %d root device(s)\n", removed);
+        return failed == 0 ? 0 : 1;
+    }
+
     void PrintUsage()
     {
         fprintf(stderr,
             "Usage: nexscreen-vdd-ctl <command>\n"
-            "  run      create the device; removed on 'x' or when the process exits\n"
-            "  create   create the device and keep it after the process exits\n"
-            "  remove   remove a device created with 'create'\n");
+            "  install [inf]  install the driver on a root-enumerated device that persists across reboots\n"
+            "                 (default inf: NexScreenVDD.inf next to this program)\n"
+            "  uninstall      remove the root-enumerated device(s)\n"
+            "  run            software device; removed on 'x' or when the process exits\n"
+            "  create         software device kept after the process exits (until reboot or 'remove')\n"
+            "  remove         remove a software device created with 'create'\n");
     }
 }
 
 int __cdecl wmain(int argc, wchar_t* argv[])
 {
+    if (argc >= 2 && _wcsicmp(argv[1], L"install") == 0 && argc <= 3)
+    {
+        return Install(argc == 3 ? argv[2] : DefaultInfPath());
+    }
+
     if (argc != 2)
     {
         PrintUsage();
         return 2;
     }
 
+    if (_wcsicmp(argv[1], L"uninstall") == 0)
+    {
+        return Uninstall();
+    }
     if (_wcsicmp(argv[1], L"run") == 0)
     {
         return Run();

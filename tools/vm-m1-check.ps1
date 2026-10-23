@@ -6,7 +6,7 @@
 .DESCRIPTION
     - Item 2: the NexScreen display adapter and monitor are present with no problem code.
     - Item 5: every advertised mode (1920x1200 and 1600x900 at 30/60 Hz) applies and reads back correctly.
-    - Items 6/7: -Cycles N runs nexscreen-vdd-ctl remove/create N times, checking that the monitor disappears and
+    - Items 6/7: -Cycles N disables/enables the NexScreen adapter N times, checking that the monitor disappears and
       comes back each time and that no new DriverFrameworks-UserMode errors were logged.
     Results are printed and saved to C:\ProgramData\NexScreen\m1-check.log.
 .EXAMPLE
@@ -169,8 +169,9 @@ $advertised = $advertised | Sort-Object -Unique
 Write-Host "Advertised modes: $($advertised -join ', ')"
 Add-Content -Path $log -Value "Advertised modes: $($advertised -join ', ')"
 
-$expected = @(@(1920, 1200, 60), @(1920, 1200, 30), @(1600, 900, 60), @(1600, 900, 30))
-foreach ($mode in $expected + ,@(1920, 1200, 60)) {
+$expected = @(@(1728, 1080, 60), @(1728, 1080, 30), @(1920, 1200, 60), @(1920, 1200, 30), @(1600, 900, 60), @(1600, 900, 30))
+# End on the preferred mode
+foreach ($mode in $expected + ,@(1728, 1080, 60)) {
     $w, $h, $hz = $mode
     $dm = [NxDisplay]::NewDevMode()
     $dm.dmPelsWidth = $w; $dm.dmPelsHeight = $h; $dm.dmDisplayFrequency = $hz
@@ -185,21 +186,23 @@ foreach ($mode in $expected + ,@(1920, 1200, 60)) {
 
 # --- Items 6/7: remove/create cycles ----------------------------------------------------------------------------
 if ($Cycles -gt 0) {
-    $ctl = Join-Path $env:ProgramData 'NexScreen\driver\nexscreen-vdd-ctl.exe'
-    if (-not (Test-Path $ctl)) { throw "$ctl not found; run vm-install-driver.ps1 first." }
+    # Disable/enable the adapter: unloads and reloads the driver for both the root-enumerated device ('install')
+    # and the software device ('create')
+    $instanceId = (Get-NexScreenPnp).Adapter.InstanceId | Select-Object -First 1
+    if (-not $instanceId) { throw 'NexScreen adapter not found; run vm-install-driver.ps1 first.' }
     # The UMDF operational log is disabled by default; without it the error check below would see nothing
     wevtutil set-log 'Microsoft-Windows-DriverFrameworks-UserMode/Operational' /enabled:true
     $errorsBefore = Get-UmdfErrorCount
 
     for ($c = 1; $c -le $Cycles; $c++) {
-        & $ctl remove | Out-Null
-        $removed = ($LASTEXITCODE -eq 0) -and (Wait-Until { -not (Get-NexScreenPnp).Monitor })
+        Disable-PnpDevice -InstanceId $instanceId -Confirm:$false
+        $removed = Wait-Until { -not (Get-NexScreenPnp).Monitor }
         $dwmAlive = $null -ne (Get-Process dwm -ErrorAction SilentlyContinue)
-        Write-Result ($removed -and $dwmAlive) "Cycle ${c}: remove (monitor gone, dwm running)"
+        Write-Result ($removed -and $dwmAlive) "Cycle ${c}: disable (monitor gone, dwm running)"
 
-        & $ctl create | Out-Null
-        $back = ($LASTEXITCODE -eq 0) -and (Wait-Until { (Get-NexScreenPnp).Monitor })
-        Write-Result $back "Cycle ${c}: create (monitor back)"
+        Enable-PnpDevice -InstanceId $instanceId -Confirm:$false
+        $back = Wait-Until { (Get-NexScreenPnp).Monitor }
+        Write-Result $back "Cycle ${c}: enable (monitor back)"
     }
 
     $newErrors = (Get-UmdfErrorCount) - $errorsBefore

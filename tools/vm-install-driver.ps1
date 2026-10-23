@@ -7,13 +7,17 @@
     1. Imports NexScreenTest.cer into LocalMachine\Root and LocalMachine\TrustedPublisher.
     2. Enables test signing. If it was off, the script stops here: reboot and run it again.
     3. pnputil /add-driver NexScreenVDD.inf /install
-    4. nexscreen-vdd-ctl create
+    4. nexscreen-vdd-ctl install (root-enumerated device, persists across reboots)
 .PARAMETER PackageDir
     Folder with NexScreenVDD.inf/.dll/.cat, NexScreenTest.cer and nexscreen-vdd-ctl.exe.
+.PARAMETER NoTestSigning
+    Skip step 2. A user-mode (UMDF) driver loads without test mode when its certificate is trusted; this simulates a
+    package signed with a real code signing certificate.
 #>
 [CmdletBinding()]
 param(
-    [string]$PackageDir = (Join-Path (Split-Path -Parent $PSScriptRoot) 'out\driver')
+    [string]$PackageDir = (Join-Path (Split-Path -Parent $PSScriptRoot) 'out\driver'),
+    [switch]$NoTestSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,7 +48,9 @@ Write-Host 'Test certificate added to Root and TrustedPublisher.'
 
 # 2. Test signing. SystemStartOptions reflects the current boot and is not localized, unlike bcdedit output.
 $startOptions = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control').SystemStartOptions
-if ($startOptions -notmatch 'TESTSIGNING') {
+if ($NoTestSigning) {
+    Write-Host 'Test signing not required (-NoTestSigning).'
+} elseif ($startOptions -notmatch 'TESTSIGNING') {
     $secureBoot = $false
     try { $secureBoot = Confirm-SecureBootUEFI } catch { }
     if ($secureBoot) {
@@ -57,8 +63,9 @@ if ($startOptions -notmatch 'TESTSIGNING') {
     Write-Host ''
     Write-Host 'Test signing enabled. Reboot the VM and run this script again.' -ForegroundColor Yellow
     exit 0
+} else {
+    Write-Host 'Test signing is active.'
 }
-Write-Host 'Test signing is active.'
 
 # 3. Driver package
 pnputil /add-driver $inf /install
@@ -66,10 +73,12 @@ if ($LASTEXITCODE -ne 0) {
     throw "pnputil /add-driver failed (exit code $LASTEXITCODE)."
 }
 
-# 4. Software device that makes PnP load the driver
-& $ctl create
+# 4. Root-enumerated device (persists across reboots) that makes PnP load the driver.
+#    A leftover software device from older versions ('create') would add a second monitor, so remove it.
+& $ctl remove 2>$null | Out-Null
+& $ctl install $inf
 if ($LASTEXITCODE -ne 0) {
-    throw "nexscreen-vdd-ctl create failed (exit code $LASTEXITCODE)."
+    throw "nexscreen-vdd-ctl install failed (exit code $LASTEXITCODE)."
 }
 
 Write-Host ''

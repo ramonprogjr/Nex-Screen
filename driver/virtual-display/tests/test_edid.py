@@ -41,14 +41,16 @@ class EdidTest(unittest.TestCase):
         self.assertIn(b"\x00\x00\x00\xFC\x00NexScreen\n", self.edid)
         self.assertIn(b"\x00\x00\x00\xFF\x00NXS0001\n", self.edid)
 
-    def test_preferred_timing_is_1920x1200_60(self):
+    def test_preferred_timing_is_1728x1080_60(self):
         dtd = self.edid[54:72]
         clock_hz = int.from_bytes(dtd[0:2], "little") * 10_000
         h_active = dtd[2] | ((dtd[4] >> 4) << 8)
         h_blank = dtd[3] | ((dtd[4] & 0xF) << 8)
         v_active = dtd[5] | ((dtd[7] >> 4) << 8)
         v_blank = dtd[6] | ((dtd[7] & 0xF) << 8)
-        self.assertEqual((h_active, v_active), (1920, 1200))
+        self.assertEqual((h_active, v_active), (1728, 1080))
+        # Must fit the Tab A9+ hardware decoder (max 1920x1088, 8160 macroblocks)
+        self.assertLessEqual(((h_active + 15) // 16) * ((v_active + 15) // 16), 8160)
         refresh = clock_hz / ((h_active + h_blank) * (v_active + v_blank))
         self.assertAlmostEqual(refresh, 60, delta=0.1)
 

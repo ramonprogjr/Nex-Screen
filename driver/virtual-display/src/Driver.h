@@ -39,7 +39,7 @@ namespace Microsoft
         struct IndirectSampleMonitor
         {
             static constexpr size_t szEdidBlock = 128;
-            static constexpr size_t szModeList = 4;
+            static constexpr size_t szModeList = 6;
 
             const BYTE pEdidBlock[szEdidBlock];
             const struct SampleMonitorMode {

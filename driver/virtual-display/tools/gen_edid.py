@@ -23,11 +23,12 @@ WEEK = 0                      # 0 = unspecified
 YEAR = 2026
 WIDTH_MM, HEIGHT_MM = 237, 148
 
-# 1920x1200@60 CVT reduced blanking, 154 MHz
+# Preferred timing: 1728x1080@60 CVT reduced blanking, 125.75 MHz. 1728x1080 is the largest 16:10 mode the
+# Tab A9+ hardware H.264 decoder accepts (max 1920x1088), so the companion streams it without rescaling.
 DTD = dict(
-    pixel_clock_khz=154_000,
-    h_active=1920, h_blank=160, h_front=48, h_sync=32, h_sync_positive=True,
-    v_active=1200, v_blank=35, v_front=3, v_sync=6, v_sync_positive=False,
+    pixel_clock_khz=125_750,
+    h_active=1728, h_blank=160, h_front=48, h_sync=32, h_sync_positive=True,
+    v_active=1080, v_blank=31, v_front=3, v_sync=6, v_sync_positive=False,
 )
 
 # Range limits (descriptor 0xFD), covering the 30 and 60 Hz modes the driver exposes
