@@ -113,6 +113,36 @@ public static class DisplayEnumerator
         return known.Count > 0 && !known.Any(t => t.Active);
     }
 
+    /// <summary>
+    /// True when a virtual monitor the selector would pick is connected, attached or not. Used when the capture can't
+    /// find its output: in "Duplicate" mode (e.g. after plugging into a USB-C/DisplayPort port) the virtual target is
+    /// still active but mirrors the main screen, so it has no output of its own and only /extend brings it back.
+    /// </summary>
+    internal static bool IsVirtualMonitorConnected(string selector, IEnumerable<DisplayConfigInterop.MonitorTarget> targets)
+    {
+        Func<DisplayConfigInterop.MonitorTarget, bool>? matches = selector.ToLowerInvariant() switch
+        {
+            "auto" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer) || IsVddName(t.FriendlyName, t.EdidManufacturer),
+            "nexscreen" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer),
+            "vdd" => t => IsVddName(t.FriendlyName, t.EdidManufacturer),
+            _ => null,
+        };
+        return matches is not null && targets.Any(matches);
+    }
+
+    /// <summary>Live check of <see cref="IsVirtualMonitorConnected(string, IEnumerable{DisplayConfigInterop.MonitorTarget})"/>.</summary>
+    public static bool IsVirtualMonitorConnected(string selector)
+    {
+        try
+        {
+            return IsVirtualMonitorConnected(selector, DisplayConfigInterop.QueryAvailableTargets());
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Live check of <see cref="IsVirtualMonitorDetached(string, IEnumerable{DisplayConfigInterop.MonitorTarget})"/>.</summary>
     public static bool IsVirtualMonitorDetached(string selector)
     {

@@ -105,8 +105,9 @@ public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent
 
             _wasPresent = present;
 
-            // Cheap gate: only query all display paths while the capture has no output.
-            var detached = outputAvailable() == false && DisplayEnumerator.IsVirtualMonitorDetached(outputSelector);
+            // Cheap gate: only query all display paths while the capture has no output. Then any connected virtual
+            // monitor counts, because "Duplicate" mode keeps it active but without an output of its own.
+            var detached = outputAvailable() == false && DisplayEnumerator.IsVirtualMonitorConnected(outputSelector);
             if (!_policy.ShouldExtend(DateTime.UtcNow, _enabled, present, detached))
             {
                 if (detached && _policy.GaveUp && !_reportedGiveUp && _enabled && present)
@@ -120,7 +121,7 @@ public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent
             }
         }
 
-        Log.Info("Virtual monitor is connected but not part of the desktop while a tablet is present; running DisplaySwitch.exe /extend.");
+        Log.Info("Virtual monitor is connected but not extended (detached or duplicated) while a tablet is present; running DisplaySwitch.exe /extend.");
         Extend();
     }
 

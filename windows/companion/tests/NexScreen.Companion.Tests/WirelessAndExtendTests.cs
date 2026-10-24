@@ -94,6 +94,17 @@ public class WirelessAndExtendTests
     }
 
     [Fact]
+    public void Connected_CountsActiveDuplicatedAndInactive()
+    {
+        // "Duplicate" mode: the VDD path is active but mirrors the main screen
+        Assert.True(DisplayEnumerator.IsVirtualMonitorConnected("auto", [new("", "SHP", true), new("VDD by MTT", "MTT", true)]));
+        Assert.True(DisplayEnumerator.IsVirtualMonitorConnected("auto", [new("NexScreen", "NXS", false)]));
+        Assert.False(DisplayEnumerator.IsVirtualMonitorConnected("auto", [new("", "SHP", true)]));
+        Assert.False(DisplayEnumerator.IsVirtualMonitorConnected("primary", [new("VDD by MTT", "MTT", false)]));
+        Assert.False(DisplayEnumerator.IsVirtualMonitorConnected("nexscreen", [new("VDD by MTT", "MTT", true)]));
+    }
+
+    [Fact]
     public void Detached_FalseWhenActiveOrAbsent()
     {
         Assert.False(DisplayEnumerator.IsVirtualMonitorDetached("auto", [new("", "SHP", true), new("VDD by MTT", "MTT", true)]));
