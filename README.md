@@ -60,35 +60,37 @@ No tablet: toque = clique, arrastar = arrastar, segurar = botão direito, dois d
 - **M1:** monitor virtual aprovado numa VM (enumeração, modo estendido, 4 modos, 10 ciclos de create/remove).
 - **M2:** imagem no tablet via USB, 1728×1080 a ~30 FPS com encoder por hardware.
 - **M3:** desktop estendido com cursor e toque como mouse.
-- **Próximos:** rotação, Wi-Fi com pareamento seguro, assinatura do driver e instalador.
+- **Bandeja:** ícone perto do relógio, reconexão automática por USB e Wi-Fi e retorno automático ao modo Estender.
+- **Próximos:** instalador único, rotação do tablet e assinatura própria (quando houver certificado).
 
-## Code signing policy
+## Code signing
 
-Windows binaries of official releases (the NexScreen driver package, the companion and the tools) are built by
-GitHub Actions from this repository. The plan is for them to be signed with a certificate obtained through the SignPath
-Foundation free code signing program. Once that is in place, signed releases will carry this attribution:
+All release binaries are built from this repository by GitHub Actions. **They are not code-signed yet**, so Windows
+SmartScreen may warn before running them ("More info" > "Run anyway").
 
-> Free code signing provided by [SignPath.io](https://signpath.io), certificate by
-> [SignPath Foundation](https://signpath.org).
+The virtual monitor used by NexScreen is the [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)
+(MIT), which is signed by its own project, so it installs with Secure Boot on and without test mode. NexScreen's own
+driver in [driver/virtual-display](driver/virtual-display) is not signed and is only used for development and testing.
 
-Team roles:
+Os binários dos releases são compilados pelo GitHub Actions a partir deste repositório e **ainda não são assinados**:
+o Windows pode mostrar o aviso do SmartScreen ("Mais informações" > "Executar assim mesmo"). O monitor virtual usado é
+o Virtual Display Driver, que é assinado pelo próprio projeto.
 
-- **Committers and reviewers:** [Ramon Pereira (@ramonprogjr)](https://github.com/ramonprogjr). Changes from anyone
-  else arrive as pull requests and are reviewed before merging.
-- **Approvers:** [Ramon Pereira (@ramonprogjr)](https://github.com/ramonprogjr) manually approves every signing
-  request.
+Maintainer: [Ramon Pereira (@ramonprogjr)](https://github.com/ramonprogjr). Changes from anyone else arrive as pull
+requests and are reviewed before merging.
 
 ## Privacy
 
 This program will not transfer any information to other networked systems unless specifically requested by the
 user or the person installing or operating it.
 
-The companion only listens on `127.0.0.1` and talks to the NexScreen app on the user's own tablet over a USB cable
-(`adb reverse`). It sends no telemetry and contacts no internet service. Logs stay on the local machine and never
-contain screen images.
+The companion only listens on `127.0.0.1` and talks to the NexScreen app on the user's own tablet through `adb reverse`,
+over a USB cable or Android wireless debugging on the local network (paired by the user). It sends no telemetry and
+contacts no internet service. Logs stay on the local machine and never contain screen images.
 
 Este programa não envia nenhuma informação a outros sistemas em rede, a menos que o usuário peça. Não há telemetria,
-e a imagem da tela vai apenas para o tablet do próprio usuário, pelo cabo USB.
+e a imagem da tela vai apenas para o tablet do próprio usuário, pelo cabo USB ou pela depuração sem fio do Android na
+rede local, pareada por você.
 
 ## License
 
