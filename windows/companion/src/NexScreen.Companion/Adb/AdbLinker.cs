@@ -8,7 +8,7 @@ public enum AdbLinkState { Disabled, Starting, NotFound, NoDevice, Unauthorized,
 /// Background tablet link over USB or wireless debugging: polls `adb devices -l` and, for each authorized physical
 /// device that appears (or reconnects, i.e. gets a new transport id), runs `adb reverse tcp:port tcp:port` and starts
 /// the NexScreen app, on one transport per device. With no device, already-paired tablets announced over mDNS are
-/// reconnected (`adb connect`); pairing is never automated. Runs on its own thread; never touches capture.
+/// reconnected (`adb connect`); pairing is only done from the tray dialog, by the user. Runs on its own thread; never touches capture.
 /// </summary>
 public sealed class AdbLinker(string? explicitAdbPath, int port)
 {
@@ -45,6 +45,8 @@ public sealed class AdbLinker(string? explicitAdbPath, int port)
     private string? _lastError;
     private DateTime _nextMdns;
     private TimeSpan _mdnsInterval = MdnsMinInterval;
+    private readonly AutoResetEvent _wake = new(false);
+    private volatile bool _reconnectRequested;
 
     public AdbLinkState State { get; private set; } = AdbLinkState.Starting;
 
@@ -77,8 +79,18 @@ public sealed class AdbLinker(string? explicitAdbPath, int port)
                 wait = NextErrorBackoff();
             }
 
-            ct.WaitHandle.WaitOne(wait);
+            WaitHandle.WaitAny([ct.WaitHandle, _wake], wait);
         }
+    }
+
+    /// <summary>
+    /// Runs the mDNS reconnect (adb connect to paired tablets) on the next poll, right away; e.g. after the tray
+    /// paired a tablet. Callable from any thread.
+    /// </summary>
+    public void RequestReconnect()
+    {
+        _reconnectRequested = true;
+        _wake.Set();
     }
 
     private TimeSpan Poll()
@@ -160,6 +172,14 @@ public sealed class AdbLinker(string? explicitAdbPath, int port)
             {
                 CheckReverse(d.Serial, link, now);
             }
+        }
+
+        if (_reconnectRequested)
+        {
+            _reconnectRequested = false;
+            _mdnsInterval = MdnsMinInterval;
+            _nextMdns = now;
+            _reportedConnects.Clear();
         }
 
         if (ready.Count == 0)

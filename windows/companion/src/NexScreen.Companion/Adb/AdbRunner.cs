@@ -10,7 +10,10 @@ public sealed record AdbResult(int ExitCode, string Output, bool TimedOut)
 /// <summary>Runs adb without a window, with a timeout, capturing stdout + stderr.</summary>
 public static class AdbRunner
 {
-    public static AdbResult Run(string adb, TimeSpan timeout, params string[] args)
+    public static AdbResult Run(string adb, TimeSpan timeout, params string[] args) => RunWithInput(adb, timeout, null, args);
+
+    /// <summary>Like <see cref="Run"/>, writing <paramref name="input"/> to stdin (keeps secrets off the command line).</summary>
+    public static AdbResult RunWithInput(string adb, TimeSpan timeout, string? input, params string[] args)
     {
         var psi = new ProcessStartInfo(adb)
         {
@@ -28,9 +31,22 @@ public static class AdbRunner
         }
 
         using var p = Process.Start(psi) ?? throw new InvalidOperationException("adb did not start.");
-        p.StandardInput.Close();
         var stdout = p.StandardOutput.ReadToEndAsync();
         var stderr = p.StandardError.ReadToEndAsync();
+        try
+        {
+            if (input is not null)
+            {
+                p.StandardInput.Write(input);
+            }
+
+            p.StandardInput.Close();
+        }
+        catch (IOException)
+        {
+            // adb exited without reading stdin; its output says why.
+        }
+
         if (!p.WaitForExit(timeout))
         {
             try

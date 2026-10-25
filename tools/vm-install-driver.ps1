@@ -77,7 +77,11 @@ if ($LASTEXITCODE -ne 0) {
 #    A leftover software device from older versions ('create') would add a second monitor, so remove it.
 & $ctl remove 2>$null | Out-Null
 & $ctl install $inf
-if ($LASTEXITCODE -ne 0) {
+# Exit code 3: installed, but Windows asks for a reboot
+if ($LASTEXITCODE -eq 3) {
+    Write-Warning 'Driver installed; restart Windows to finish.'
+}
+elseif ($LASTEXITCODE -ne 0) {
     throw "nexscreen-vdd-ctl install failed (exit code $LASTEXITCODE)."
 }
 

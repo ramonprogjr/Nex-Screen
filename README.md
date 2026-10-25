@@ -21,26 +21,45 @@ Windows: você arrasta janelas para o tablet e usa por toque.
 
 ## Usar
 
-Antes, uma vez: o app no tablet (`.\tools\android-install.ps1`), a depuração USB autorizada e um monitor virtual.
-Até o driver NexScreen ser assinado, a ponte é o
-[Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver), que é assinado.
+O jeito mais simples é o instalador:
 
-1. Instale o companion uma vez: `.\tools\install-companion.ps1` (sem administrador; vai para
-   `%LOCALAPPDATA%\Programs\NexScreen` e cria o atalho "NexScreen" no menu Iniciar).
-2. Abra **NexScreen** no menu Iniciar. Ele fica no ícone perto do relógio, sem janela.
-3. Ligue o tablet no cabo USB. O NexScreen faz o `adb reverse`, abre o app no tablet e começa a transmitir.
+1. Baixe o `NexScreen-Setup-vX.Y.Z.exe` da [última release](https://github.com/ramonprogjr/Nex-Screen/releases).
+2. Abra o arquivo. Como o instalador ainda não é assinado, o Windows pode mostrar a tela azul "O Windows protegeu o
+   computador" (SmartScreen). Clique em **Mais informações** e depois em **Executar assim mesmo**.
+3. Avance até o fim e aceite o pedido de administrador. É a única vez que ele é necessário. O instalador coloca:
+   - o NexScreen em `C:\Program Files\NexScreen`, com o atalho "NexScreen" no menu Iniciar;
+   - o adb (Android SDK Platform-Tools);
+   - o monitor virtual. Até o driver NexScreen ser assinado, o monitor virtual é o
+     [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver), que é assinado e já vem
+     configurado para 1728×1080.
+
+   Na última tela, "Iniciar o NexScreen agora" já vem marcado. Marque "Iniciar com o Windows" se quiser que ele
+   abra sozinho.
+4. No tablet, instale o app NexScreen (o `.apk` da mesma release) e ative a depuração USB nas opções do
+   desenvolvedor.
+5. Ligue o tablet no cabo USB e aceite a depuração no tablet. O NexScreen faz o `adb reverse`, abre o app no tablet
+   e começa a transmitir. O ícone fica perto do relógio, sem janela.
+
+Sem o instalador (desenvolvimento): o app no tablet com `.\tools\android-install.ps1`, um monitor virtual instalado
+à parte e o companion com `.\tools\install-companion.ps1` (sem administrador; vai para
+`%LOCALAPPDATA%\Programs\NexScreen` e cria o atalho "NexScreen" no menu Iniciar).
 
 O ícone mostra o estado ("aguardando o tablet", "transmitindo para o tablet", "Tablet não autorizado — aceite a
 depuração USB no tablet"...). No menu do ícone:
 
-- **Manter a tela do tablet estendida** (ligado): se o monitor virtual sair da área de trabalho (por exemplo depois
-  de reiniciar, ou com Win+P em "Somente na tela do PC") e houver um tablet conectado, o NexScreen volta a estender.
+- **Manter a tela do tablet estendida** (ligado): se o monitor virtual sair da área de trabalho ou ficar duplicando
+  outra tela (por exemplo depois de reiniciar, ou com Win+P em "Somente na tela do PC" ou "Duplicar") e houver um
+  tablet conectado, o NexScreen volta a estender só a tela do tablet, no lugar onde ela estava (ou à direita das
+  outras telas). Os outros monitores não mudam. A escolha fica gravada e continua valendo depois de reiniciar.
+- **Parear tablet por Wi-Fi…**: pareia o tablet sem terminal. No tablet, abra Configurações → Opções do
+  desenvolvedor → Depuração por Wi-Fi → Parear dispositivo com código de pareamento e digite na janela o código de
+  6 dígitos. O IP:porta é opcional; se ficar vazio, o NexScreen encontra o tablet na rede.
 - **Iniciar com o Windows** (desligado): marque para o NexScreen abrir sozinho depois de reiniciar.
 - **Estender a área de trabalho**, **Abrir pasta de logs** e **Sair**.
 
-Sem cabo, a **depuração sem fio** do Android também serve: pareie o tablet uma vez com `adb pair <ip>:<porta>`
-(o código aparece no tablet) e depois `adb connect <ip>:<porta>`. Daí em diante o NexScreen reconecta sozinho
-quando a porta muda, e o menu mostra "Tablet conectado por Wi-Fi". O pareamento é sempre feito por você.
+Sem cabo, a **depuração sem fio** do Android também serve: pareie o tablet uma vez em **Parear tablet por Wi-Fi…**
+(ou no terminal, com `adb pair <ip>:<porta>`). Daí em diante o NexScreen conecta e reconecta sozinho quando a porta
+muda, e o menu mostra "Tablet conectado por Wi-Fi". O pareamento é sempre feito por você.
 
 Para desenvolvimento, `.\tools\start-nexscreen.ps1` roda o companion neste console (Ctrl+C encerra).
 
@@ -48,12 +67,21 @@ No tablet: toque = clique, arrastar = arrastar, segurar = botão direito, dois d
 
 ## Desinstalar / Uninstall
 
+- **Instalado pelo NexScreen-Setup:** em Configurações > Aplicativos (ou "Adicionar ou remover programas"),
+  desinstale **NexScreen**. O desinstalador fecha o programa e remove a pasta `C:\Program Files\NexScreen` (com o
+  adb), o atalho, a inicialização com o Windows, as opções em `HKCU\Software\NexScreen` e o adb do PATH. Ele
+  pergunta "Remover também o monitor virtual?" (padrão: Sim). Com Sim, remove o monitor virtual, o pacote do driver
+  e o `C:\VirtualDisplayDriver\vdd_settings.xml`; se havia um arquivo seu antes, ele é restaurado. Responda Não se
+  você usa o Virtual Display Driver com outro programa. Os logs ficam em `%LOCALAPPDATA%\NexScreen\logs`.
+  Sem perguntas: `"C:\Program Files\NexScreen\unins000.exe" /VERYSILENT` (acrescente `/KEEPVDD` para manter o
+  monitor virtual).
 - **Android app:** desinstale "NexScreen" pelo tablet, ou rode `adb uninstall app.nexscreen`.
-- **Companion:** `.\tools\install-companion.ps1 -Uninstall` fecha o programa e remove a pasta
+- **Companion instalado pelo script:** `.\tools\install-companion.ps1 -Uninstall` fecha o programa e remove a pasta
   `%LOCALAPPDATA%\Programs\NexScreen`, o atalho do menu Iniciar e a inicialização com o Windows. Se você usou o zip
   de uma release, feche o programa e apague a pasta. Os logs ficam em `%LOCALAPPDATA%\NexScreen\logs`.
 - **Driver NexScreen:** `tools\vm-uninstall-driver.ps1` (como administrador) remove o monitor e o pacote do driver.
-- **Ponte VDD (terceiros):** `devcon remove Root\MttVDD` como administrador, depois apague `C:\VirtualDisplayDriver`.
+- **VDD instalado à mão (sem o NexScreen-Setup):** `devcon remove Root\MttVDD` como administrador, depois apague
+  `C:\VirtualDisplayDriver`.
 
 ## Estado
 
@@ -61,7 +89,8 @@ No tablet: toque = clique, arrastar = arrastar, segurar = botão direito, dois d
 - **M2:** imagem no tablet via USB, 1728×1080 a ~30 FPS com encoder por hardware.
 - **M3:** desktop estendido com cursor e toque como mouse.
 - **Bandeja:** ícone perto do relógio, reconexão automática por USB e Wi-Fi e retorno automático ao modo Estender.
-- **Próximos:** instalador único, rotação do tablet e assinatura própria (quando houver certificado).
+- **Instalador:** `NexScreen-Setup` instala o companion, o adb e o monitor virtual de uma vez (ainda não assinado).
+- **Próximos:** rotação do tablet e assinatura própria (quando houver certificado).
 
 ## Code signing
 
@@ -96,3 +125,7 @@ rede local, pareada por você.
 
 [MIT](LICENSE). Files under `driver/virtual-display/` derive from the Microsoft IndirectDisplay sample and are under
 MS-PL (see [THIRD_PARTY.md](driver/virtual-display/THIRD_PARTY.md)).
+
+The installer also ships, unmodified, the [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver)
+25.7.23 (MIT) and the Android SDK Platform-Tools (adb, Apache 2.0, with its NOTICE). See
+[THIRD_PARTY_NOTICES.txt](windows/installer/THIRD_PARTY_NOTICES.txt).

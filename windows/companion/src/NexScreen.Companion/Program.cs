@@ -165,9 +165,33 @@ static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, Options o
 {
     var port = options.Port;
     var status = new CompanionStatus(options.AutoAdb);
+    // The saved tray choice applies to every run; --no-auto-extend turns it off for this run only.
+    var settings = new TraySettings();
+    var savedKeepExtended = settings.KeepExtended;
     var extender = new AutoExtender(pipelineOptions.OutputSelector, () => status.Snapshot.TabletPresent,
-        () => status.Snapshot.OutputAvailable) { Enabled = options.AutoExtend };
-    using var tray = options.Tray ? TrayApp.Start(status, extender, cts.Cancel, instance) : null;
+        () => status.Snapshot.OutputAvailable)
+    {
+        Enabled = TraySettings.EffectiveKeepExtended(options.AutoExtend, savedKeepExtended),
+        RememberedPlace = settings.VirtualMonitorRect,
+    };
+    extender.PlaceChanged += rect =>
+    {
+        try
+        {
+            settings.VirtualMonitorRect = rect;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            Log.Warn($"Could not save the virtual monitor position: {ex.Message}");
+        }
+    };
+    if (!savedKeepExtended)
+    {
+        Log.Info("Keep the tablet screen extended is off (saved tray setting).");
+    }
+
+    var linker = options.AutoAdb ? new AdbLinker(options.AdbPath, port) : null;
+    using var tray = options.Tray ? TrayApp.Start(status, extender, linker, options.AdbPath, cts.Cancel, instance) : null;
 
     await using var transport = new TcpDisplayTransport(port);
     transport.SessionStarted += status.SessionStarted;
@@ -213,9 +237,8 @@ static async Task<int> RunServerAsync(PipelineOptions pipelineOptions, Options o
     thread.Start();
 
     extender.Start(cts.Token);
-    if (options.AutoAdb)
+    if (linker is not null)
     {
-        var linker = new AdbLinker(options.AdbPath, port);
         linker.StateChanged += status.SetAdb;
         linker.Start(cts.Token);
         Log.Info($"Tablet link: an authorized tablet on USB or wireless debugging gets adb reverse tcp:{port} and the app is opened (--no-adb to disable).");

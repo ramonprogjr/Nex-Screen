@@ -98,19 +98,29 @@ public static partial class AdbOutput
     /// Parses `adb mdns services` ("name\ttype\taddress" lines). Only "_adb-tls-connect._tcp" services are returned:
     /// those accept connections from already-paired PCs only. Pairing services are never returned.
     /// </summary>
-    public static List<string> ParseTlsConnectServices(string output)
+    public static List<string> ParseTlsConnectServices(string output) => ParseMdnsServices(output, TlsConnectService);
+
+    public const string TlsPairingService = "_adb-tls-pairing._tcp";
+
+    /// <summary>
+    /// "_adb-tls-pairing._tcp" services from `adb mdns services`: announced only while the tablet shows "Pair device
+    /// with pairing code". Used by the tray pairing dialog, never by the automatic link.
+    /// </summary>
+    public static List<string> ParseTlsPairingServices(string output) => ParseMdnsServices(output, TlsPairingService);
+
+    private static List<string> ParseMdnsServices(string output, string serviceType)
     {
         var result = new List<string>();
         foreach (var raw in output.Split('\n'))
         {
             var parts = raw.Trim().Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 3 || !parts[1].TrimEnd('.').Equals(TlsConnectService, StringComparison.OrdinalIgnoreCase))
+            if (parts.Length < 3 || !parts[1].TrimEnd('.').Equals(serviceType, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
             var address = parts[^1];
-            if (NetworkSerialRegex().IsMatch(address) && !result.Contains(address))
+            if (IsNetworkAddress(address) && !result.Contains(address))
             {
                 result.Add(address);
             }
@@ -118,6 +128,15 @@ public static partial class AdbOutput
 
         return result;
     }
+
+    /// <summary>"ip:port" or "[v6]:port" with a port in 1-65535.</summary>
+    public static bool IsNetworkAddress(string address) =>
+        NetworkSerialRegex().IsMatch(address) &&
+        int.TryParse(address.AsSpan(address.LastIndexOf(':') + 1), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture, out var port) && port is > 0 and <= 65535;
+
+    /// <summary>`adb pair` prints "Successfully paired to ip:port [guid=...]" on success; its exit code is not reliable.</summary>
+    public static bool PairSucceeded(string output) => output.Contains("Successfully paired", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// One transport per physical device (same ro.serialno): USB first, then ip:port, then the mDNS name. Linking

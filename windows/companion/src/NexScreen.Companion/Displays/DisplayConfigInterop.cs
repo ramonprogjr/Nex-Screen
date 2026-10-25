@@ -2,17 +2,32 @@ using System.Runtime.InteropServices;
 
 namespace NexScreen.Companion.Displays;
 
-/// <summary>Minimal QueryDisplayConfig / DisplayConfigGetDeviceInfo interop.</summary>
+/// <summary>Minimal QueryDisplayConfig / SetDisplayConfig / DisplayConfigGetDeviceInfo interop.</summary>
 internal static class DisplayConfigInterop
 {
-    private const uint QdcAllPaths = 0x1;
-    private const uint QdcOnlyActivePaths = 0x2;
-    private const uint PathActive = 0x1;
+    internal const uint QdcAllPaths = 0x1;
+    internal const uint QdcOnlyActivePaths = 0x2;
+    internal const uint PathActive = 0x1;
+    internal const uint ModeIdxInvalid = 0xFFFFFFFF;
+    internal const uint ModeTypeSource = 1;
+    internal const uint ModeTypeTarget = 2;
+    internal const uint PixelFormat32Bpp = 4;
+    internal const uint RotationIdentity = 1;
+    internal const uint ScalingPreferred = 128;
+
+    internal const uint SdcTopologySupplied = 0x10;
+    internal const uint SdcUseSuppliedDisplayConfig = 0x20;
+    internal const uint SdcValidate = 0x40;
+    internal const uint SdcApply = 0x80;
+    internal const uint SdcSaveToDatabase = 0x200;
+    internal const uint SdcAllowChanges = 0x400;
+
     private const int ErrorSuccess = 0;
     private const int ErrorInsufficientBuffer = 122;
 
     private const uint DeviceInfoGetSourceName = 1;
     private const uint DeviceInfoGetTargetName = 2;
+    private const uint DeviceInfoGetTargetPreferredMode = 3;
 
     [StructLayout(LayoutKind.Sequential)]
     internal struct Luid
@@ -21,17 +36,19 @@ internal static class DisplayConfigInterop
         public int HighPart;
 
         public readonly long Value => ((long)HighPart << 32) | LowPart;
+
+        public static Luid From(long value) => new() { LowPart = (uint)value, HighPart = (int)(value >> 32) };
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct Rational
+    internal struct Rational
     {
         public uint Numerator;
         public uint Denominator;
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct PathSourceInfo
+    internal struct PathSourceInfo
     {
         public Luid AdapterId;
         public uint Id;
@@ -40,7 +57,7 @@ internal static class DisplayConfigInterop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct PathTargetInfo
+    internal struct PathTargetInfo
     {
         public Luid AdapterId;
         public uint Id;
@@ -55,19 +72,53 @@ internal static class DisplayConfigInterop
     }
 
     [StructLayout(LayoutKind.Sequential)]
-    private struct PathInfo
+    internal struct PathInfo
     {
         public PathSourceInfo SourceInfo;
         public PathTargetInfo TargetInfo;
         public uint Flags;
+
+        public readonly bool IsActive => (Flags & PathActive) != 0;
     }
 
-    [StructLayout(LayoutKind.Sequential, Size = 64)]
-    private struct ModeInfo
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct Region2D
     {
-        public uint InfoType;
-        public uint Id;
-        public Luid AdapterId;
+        public uint Cx;
+        public uint Cy;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct VideoSignalInfo
+    {
+        public ulong PixelRate;
+        public Rational HSyncFreq;
+        public Rational VSyncFreq;
+        public Region2D ActiveSize;
+        public Region2D TotalSize;
+        public uint VideoStandard;
+        public uint ScanLineOrdering;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct SourceMode
+    {
+        public uint Width;
+        public uint Height;
+        public uint PixelFormat;
+        public int X;
+        public int Y;
+    }
+
+    /// <summary>DISPLAYCONFIG_MODE_INFO: header plus the source/target mode union.</summary>
+    [StructLayout(LayoutKind.Explicit, Size = 64)]
+    internal struct ModeInfo
+    {
+        [FieldOffset(0)] public uint InfoType;
+        [FieldOffset(4)] public uint Id;
+        [FieldOffset(8)] public Luid AdapterId;
+        [FieldOffset(16)] public VideoSignalInfo TargetMode;
+        [FieldOffset(16)] public SourceMode SourceMode;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -102,6 +153,15 @@ internal static class DisplayConfigInterop
         public string MonitorDevicePath;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TargetPreferredMode
+    {
+        public DeviceInfoHeader Header;
+        public uint Width;
+        public uint Height;
+        public VideoSignalInfo TargetMode;
+    }
+
     [DllImport("user32.dll")]
     private static extern int GetDisplayConfigBufferSizes(uint flags, out uint numPathArrayElements, out uint numModeInfoArrayElements);
 
@@ -113,6 +173,17 @@ internal static class DisplayConfigInterop
         ref uint numModeInfoArrayElements,
         [Out] ModeInfo[] modeInfoArray,
         IntPtr currentTopologyId);
+
+    [DllImport("user32.dll")]
+    private static extern int SetDisplayConfig(
+        uint numPathArrayElements,
+        [In] PathInfo[]? pathArray,
+        uint numModeInfoArrayElements,
+        [In] ModeInfo[]? modeInfoArray,
+        uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern int DisplayConfigGetDeviceInfo(ref TargetPreferredMode requestPacket);
 
     [DllImport("user32.dll")]
     private static extern int DisplayConfigGetDeviceInfo(ref SourceDeviceName requestPacket);
@@ -164,7 +235,8 @@ internal static class DisplayConfigInterop
         return [.. byTarget.Values];
     }
 
-    private static (string Friendly, string? Manufacturer) GetTargetName(Luid adapter, uint id)
+    /// <summary>Monitor friendly name and EDID manufacturer of a target.</summary>
+    internal static (string Friendly, string? Manufacturer) GetTargetName(Luid adapter, uint id)
     {
         var target = new TargetDeviceName
         {
@@ -186,7 +258,10 @@ internal static class DisplayConfigInterop
             (target.Flags & EdidIdsValid) != 0 ? DecodePnpId(target.EdidManufactureId) : null);
     }
 
-    private static PathInfo[] QueryPaths(uint flags)
+    private static PathInfo[] QueryPaths(uint flags) => QueryConfig(flags).Paths;
+
+    /// <summary>QueryDisplayConfig with the given QDC_* flags: paths and the modes they index.</summary>
+    internal static (PathInfo[] Paths, ModeInfo[] Modes) QueryConfig(uint flags)
     {
         PathInfo[] paths;
         ModeInfo[] modes;
@@ -206,6 +281,7 @@ internal static class DisplayConfigInterop
             if (rc == ErrorSuccess)
             {
                 Array.Resize(ref paths, (int)numPaths);
+                Array.Resize(ref modes, (int)numModes);
             }
         }
         while (rc == ErrorInsufficientBuffer && ++attempts < 5);
@@ -215,7 +291,29 @@ internal static class DisplayConfigInterop
             throw new InvalidOperationException($"QueryDisplayConfig failed: {rc}");
         }
 
-        return paths;
+        return (paths, modes);
+    }
+
+    /// <summary>SetDisplayConfig with supplied paths and modes; returns the Win32 error code (0 = success).</summary>
+    internal static int Apply(PathInfo[] paths, ModeInfo[] modes, uint flags) =>
+        SetDisplayConfig((uint)paths.Length, paths, (uint)modes.Length, modes.Length == 0 ? null : modes, flags);
+
+    /// <summary>The monitor's preferred mode (usually its native resolution), or null when the driver reports none.</summary>
+    internal static (uint Width, uint Height, VideoSignalInfo TargetMode)? GetPreferredMode(Luid adapter, uint targetId)
+    {
+        var request = new TargetPreferredMode
+        {
+            Header = new DeviceInfoHeader
+            {
+                Type = DeviceInfoGetTargetPreferredMode,
+                Size = (uint)Marshal.SizeOf<TargetPreferredMode>(),
+                AdapterId = adapter,
+                Id = targetId,
+            },
+        };
+        return DisplayConfigGetDeviceInfo(ref request) == ErrorSuccess && request.Width > 0 && request.Height > 0
+            ? (request.Width, request.Height, request.TargetMode)
+            : null;
     }
 
     /// <summary>Active display paths, keyed by source GDI name (\\.\DISPLAYn).</summary>

@@ -39,6 +39,18 @@ jobs:
           -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
           -o out/companion --nologo
 
+      # Compile check of the installer (downloads and verifies the pinned VDD, Platform-Tools and Inno Setup)
+      - name: Build installer
+        shell: pwsh
+        run: ./tools/build-installer.ps1 -CompanionDir out/companion -SkipDriverBuild -InstallInnoSetup
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nexscreen-setup
+          path: out/installer/NexScreen-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 7
+
       - uses: actions/upload-artifact@v4
         with:
           name: nexscreen-driver-unsigned

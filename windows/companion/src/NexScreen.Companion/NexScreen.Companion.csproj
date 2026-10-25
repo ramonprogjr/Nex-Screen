@@ -19,6 +19,8 @@
     <AssemblyName>NexScreen.Companion</AssemblyName>
     <RootNamespace>NexScreen.Companion</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- Self-contained publish would otherwise also restore the unused ASP.NET Core runtime pack, which can lag the SDK on nuget.org -->
+    <DisableTransitiveFrameworkReferenceDownloads>true</DisableTransitiveFrameworkReferenceDownloads>
   </PropertyGroup>
 
   <ItemGroup>

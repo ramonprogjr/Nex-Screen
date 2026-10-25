@@ -111,6 +111,27 @@ public class AdbTests
     }
 
     [Fact]
+    public void Locator_BundledPlatformToolsAfterExplicitBeforePath()
+    {
+        const string app = @"C:\Program Files\NexScreen\";
+        const string bundled = @"C:\Program Files\NexScreen\platform-tools\adb.exe";
+        var c = AdbLocator.Candidates(null, @"C:\Tools", LocalAppData, FakeDirs, app).ToList();
+        Assert.Equal(
+        [
+            bundled,
+            @"C:\Tools\adb.exe",
+            LocalAppData + @"\Android\Sdk\platform-tools\adb.exe",
+            WinGetDir + @"\platform-tools\adb.exe",
+        ], c);
+
+        // The bundled adb wins over one on PATH; --adb still wins over the bundled one.
+        string[] existing = [bundled, @"C:\Tools\adb.exe"];
+        Assert.Equal(bundled, AdbLocator.Find(null, @"C:\Tools", LocalAppData, existing.Contains, FakeDirs, app));
+        Assert.Equal([@"D:\sdk\adb.exe"], AdbLocator.Candidates(@"D:\sdk\adb.exe", @"C:\Tools", LocalAppData, FakeDirs, app));
+        Assert.Equal(@"C:\Tools\adb.exe", AdbLocator.Find(null, @"C:\Tools", LocalAppData, p => p == @"C:\Tools\adb.exe", FakeDirs, app));
+    }
+
+    [Fact]
     public void Locator_ExplicitPathIsTheOnlyCandidate()
     {
         var c = AdbLocator.Candidates(@"""D:\sdk\adb.exe""", @"C:\Tools", LocalAppData, FakeDirs).ToList();

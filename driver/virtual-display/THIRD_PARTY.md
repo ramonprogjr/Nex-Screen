@@ -14,7 +14,7 @@
 | `IddSampleDriver/IddSampleDriver.inf` | `inf/NexScreenVDD.inf` | Names, hardware IDs, device group |
 | `IddSampleDriver/IddSampleDriver.vcxproj` | `src/NexScreenVDD.vcxproj` | Names, new GUID, x64 only, own `.rc`, WDK signing off |
 | `IddSampleDriver/IddSampleDriver.rc` | `src/NexScreenVDD.rc` | Rewritten with NexScreen version info |
-| `IddSampleApp/main.cpp` | `tools/nexscreen-vdd-ctl/main.cpp` | `run`/`create`/`remove`, checks `hrCreateResult`, exit codes |
+| `IddSampleApp/main.cpp` | `tools/nexscreen-vdd-ctl/main.cpp` | `run`/`create`/`remove`, checks `hrCreateResult`, exit codes; `install`/`uninstall`/`status` of a root-enumerated device with `--hwid` (SetupAPI), driver package removal |
 | `IddSampleApp/IddSampleApp.vcxproj` | `tools/nexscreen-vdd-ctl/nexscreen-vdd-ctl.vcxproj` | Names, new GUID, x64 only |
 | `IddSampleDriver.sln` | `NexScreenVDD.sln` | New projects and GUIDs |
 

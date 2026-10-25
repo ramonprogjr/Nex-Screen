@@ -97,20 +97,34 @@ public static class DisplayEnumerator
     /// </summary>
     internal static bool IsVirtualMonitorDetached(string selector, IEnumerable<DisplayConfigInterop.MonitorTarget> targets)
     {
-        Func<DisplayConfigInterop.MonitorTarget, bool>? matches = selector.ToLowerInvariant() switch
-        {
-            "auto" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer) || IsVddName(t.FriendlyName, t.EdidManufacturer),
-            "nexscreen" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer),
-            "vdd" => t => IsVddName(t.FriendlyName, t.EdidManufacturer),
-            _ => null,
-        };
-        if (matches is null)
+        if (!IsVirtualSelector(selector))
         {
             return false;
         }
 
-        var known = targets.Where(matches).ToList();
+        var known = targets.Where(t => VirtualRank(selector, t.FriendlyName, t.EdidManufacturer) >= 0).ToList();
         return known.Count > 0 && !known.Any(t => t.Active);
+    }
+
+    /// <summary>Selectors that pick a virtual monitor (auto / nexscreen / vdd); only those are re-attached.</summary>
+    internal static bool IsVirtualSelector(string selector) =>
+        selector.ToLowerInvariant() is "auto" or "nexscreen" or "vdd";
+
+    /// <summary>
+    /// -1 when the monitor is not a virtual monitor the selector would pick; otherwise its preference (0 first):
+    /// "auto" prefers the NexScreen monitor over the VDD one.
+    /// </summary>
+    internal static int VirtualRank(string selector, string friendlyName, string? manufacturer)
+    {
+        var nexScreen = IsNexScreenName(friendlyName, manufacturer);
+        var vdd = IsVddName(friendlyName, manufacturer);
+        return selector.ToLowerInvariant() switch
+        {
+            "auto" => nexScreen ? 0 : vdd ? 1 : -1,
+            "nexscreen" => nexScreen ? 0 : -1,
+            "vdd" => vdd ? 0 : -1,
+            _ => -1,
+        };
     }
 
     /// <summary>
@@ -118,17 +132,8 @@ public static class DisplayEnumerator
     /// find its output: in "Duplicate" mode (e.g. after plugging into a USB-C/DisplayPort port) the virtual target is
     /// still active but mirrors the main screen, so it has no output of its own and only /extend brings it back.
     /// </summary>
-    internal static bool IsVirtualMonitorConnected(string selector, IEnumerable<DisplayConfigInterop.MonitorTarget> targets)
-    {
-        Func<DisplayConfigInterop.MonitorTarget, bool>? matches = selector.ToLowerInvariant() switch
-        {
-            "auto" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer) || IsVddName(t.FriendlyName, t.EdidManufacturer),
-            "nexscreen" => t => IsNexScreenName(t.FriendlyName, t.EdidManufacturer),
-            "vdd" => t => IsVddName(t.FriendlyName, t.EdidManufacturer),
-            _ => null,
-        };
-        return matches is not null && targets.Any(matches);
-    }
+    internal static bool IsVirtualMonitorConnected(string selector, IEnumerable<DisplayConfigInterop.MonitorTarget> targets) =>
+        targets.Any(t => VirtualRank(selector, t.FriendlyName, t.EdidManufacturer) >= 0);
 
     /// <summary>Live check of <see cref="IsVirtualMonitorConnected(string, IEnumerable{DisplayConfigInterop.MonitorTarget})"/>.</summary>
     public static bool IsVirtualMonitorConnected(string selector)

@@ -33,11 +33,20 @@ jobs:
           -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
           -o out/companion --nologo
 
+      # Pinned Inno Setup, VDD and Platform-Tools, each verified by SHA256 and Authenticode (see the script).
+      # nexscreen-vdd-ctl.exe comes from the driver build above.
+      - name: Build installer
+        shell: pwsh
+        run: >
+          ./tools/build-installer.ps1 -Version '${{ github.ref_name }}'
+          -CompanionDir out/companion -SkipDriverBuild -InstallInnoSetup
+
       - name: Package
         shell: pwsh
         run: |
           $v = '${{ github.ref_name }}'
           New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "out/installer/NexScreen-Setup-$v.exe" dist/
           Copy-Item README.md, LICENSE out/driver/
           Copy-Item driver/virtual-display/THIRD_PARTY.md out/driver/
           Compress-Archive out/driver/* "dist/NexScreen-driver-$v-x64-unsigned.zip"
@@ -87,18 +96,30 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          NexScreen turns an Android tablet into an extended monitor for Windows 10/11 over USB.
+          NexScreen turns an Android tablet into an extended monitor for Windows 10/11, over USB or Wi-Fi.
+
+          **Windows: download `NexScreen-Setup-*.exe`** and run it. It installs everything in one go (needs
+          administrator once): the companion in the notification area, adb (Android SDK Platform-Tools) and the
+          signed [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) as the virtual
+          monitor. Uninstall from Settings > Apps.
+
+          The installer is **not code-signed yet**, so Windows SmartScreen shows "Windows protected your PC": click
+          **More info** and then **Run anyway**.
+
+          O instalador ainda **não é assinado**: na tela azul "O Windows protegeu o computador", clique em
+          **Mais informações** e depois em **Executar assim mesmo**.
 
           **Assets**
-          - `NexScreen-companion-*-win-x64.zip`: Windows companion (self-contained, no .NET install needed).
+          - `NexScreen-Setup-*.exe`: Windows installer (recommended).
           - `NexScreen-android-*-debug.apk`: Android app (debug-signed).
-          - `NexScreen-driver-*-x64-unsigned.zip`: virtual display driver package. **Not yet code-signed**: it
-            only installs on Windows in test mode. Code signing through the SignPath Foundation is pending. Until then,
-            use the signed [Virtual Display Driver](https://github.com/VirtualDrivers/Virtual-Display-Driver) as the
-            virtual monitor.
+          - `NexScreen-companion-*-win-x64.zip`: Windows companion only (self-contained, no .NET install needed),
+            for manual setups.
+          - `NexScreen-driver-*-x64-unsigned.zip`: NexScreen's own virtual display driver, for development. **Not
+            code-signed**: it only installs on Windows in test mode. The installer uses the signed Virtual Display
+            Driver instead.
 
-          All binaries are built from this tag by GitHub Actions. See the README for usage, privacy and uninstall
-          instructions.
+          All binaries are built from this tag by GitHub Actions and are not code-signed. See the README for usage,
+          privacy and uninstall instructions.
           EOF
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
             --title "NexScreen $GITHUB_REF_NAME" --notes-file notes.md --prerelease

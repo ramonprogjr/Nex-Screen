@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using NexScreen.Companion.Util;
 
 namespace NexScreen.Companion.Displays;
@@ -41,17 +40,44 @@ public sealed class ExtendPolicy
 
 /// <summary>
 /// "Manter a tela do tablet estendida": when a tablet is present but the virtual monitor fell out of the desktop
-/// (reboot into "PC screen only", Win+P), runs DisplaySwitch.exe /extend. Own thread, polls every 3 s.
+/// (reboot into "PC screen only", Win+P > Duplicate), attaches only the virtual monitor again
+/// (<see cref="DisplayExtender"/>). Own thread, polls every 3 s.
 /// </summary>
 public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent, Func<bool?> outputAvailable)
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan RecordInterval = TimeSpan.FromSeconds(30);
 
     private readonly ExtendPolicy _policy = new();
     private readonly object _gate = new();
     private volatile bool _enabled = true;
     private bool _wasPresent;
     private bool _reportedGiveUp;
+    private DateTime _nextRecord;
+    private DesktopRect? _remembered;
+
+    /// <summary>Raised (on the poll thread) when the extended virtual monitor's place changes, to persist it.</summary>
+    public event Action<DesktopRect>? PlaceChanged;
+
+    /// <summary>Where the virtual monitor was while extended; restored there when the spot is still free.</summary>
+    public DesktopRect? RememberedPlace
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _remembered;
+            }
+        }
+
+        set
+        {
+            lock (_gate)
+            {
+                _remembered = value;
+            }
+        }
+    }
 
     public bool Enabled
     {
@@ -93,6 +119,12 @@ public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent
 
     private void Tick()
     {
+        var available = outputAvailable();
+        if (available == true)
+        {
+            RecordPlace();
+        }
+
         var present = tabletPresent();
         lock (_gate)
         {
@@ -107,7 +139,7 @@ public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent
 
             // Cheap gate: only query all display paths while the capture has no output. Then any connected virtual
             // monitor counts, because "Duplicate" mode keeps it active but without an output of its own.
-            var detached = outputAvailable() == false && DisplayEnumerator.IsVirtualMonitorConnected(outputSelector);
+            var detached = available == false && DisplayEnumerator.IsVirtualMonitorConnected(outputSelector);
             if (!_policy.ShouldExtend(DateTime.UtcNow, _enabled, present, detached))
             {
                 if (detached && _policy.GaveUp && !_reportedGiveUp && _enabled && present)
@@ -121,21 +153,29 @@ public sealed class AutoExtender(string outputSelector, Func<bool> tabletPresent
             }
         }
 
-        Log.Info("Virtual monitor is connected but not extended (detached or duplicated) while a tablet is present; running DisplaySwitch.exe /extend.");
-        Extend();
+        Log.Info("Virtual monitor is connected but not extended (detached or duplicated) while a tablet is present; extending it.");
+        ExtendNow();
     }
 
-    /// <summary>Same as Win+P > Extend.</summary>
-    public static void Extend()
+    /// <summary>Attaches the virtual monitor of this selector (also used by the tray menu).</summary>
+    public ExtendMethod ExtendNow() => DisplayExtender.Extend(outputSelector, RememberedPlace);
+
+    private void RecordPlace()
     {
-        var exe = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "DisplaySwitch.exe");
-        try
+        var now = DateTime.UtcNow;
+        if (now < _nextRecord)
         {
-            using var p = Process.Start(new ProcessStartInfo(exe, "/extend") { UseShellExecute = false, CreateNoWindow = true });
+            return;
         }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+
+        _nextRecord = now + RecordInterval;
+        if (DisplayExtender.CurrentVirtualRect(outputSelector) is not { } rect || rect == RememberedPlace)
         {
-            Log.Warn($"Could not run DisplaySwitch.exe: {ex.Message}");
+            return;
         }
+
+        RememberedPlace = rect;
+        Log.Debug($"Virtual monitor extended at {rect}.");
+        PlaceChanged?.Invoke(rect);
     }
 }

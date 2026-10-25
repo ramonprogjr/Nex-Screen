@@ -38,10 +38,10 @@ public sealed class Options
     /// <summary>Link the tablet automatically (adb reverse + start the app). --no-adb turns it off.</summary>
     public bool AutoAdb { get; private set; } = true;
 
-    /// <summary>Explicit adb.exe path (default: PATH, the Android SDK, then the WinGet Google.PlatformTools package).</summary>
+    /// <summary>Explicit adb.exe path (default: platform-tools next to the exe, PATH, the Android SDK, then WinGet Google.PlatformTools).</summary>
     public string? AdbPath { get; private set; }
 
-    /// <summary>Re-attach the virtual monitor (DisplaySwitch /extend) when it falls out of the desktop. --no-auto-extend turns it off.</summary>
+    /// <summary>Re-attach the virtual monitor when it falls out of the desktop. --no-auto-extend turns it off for this run.</summary>
     public bool AutoExtend { get; private set; } = true;
 
     public int EffectiveGop => GopFrames ?? Fps * 10;
@@ -52,10 +52,11 @@ public sealed class Options
         Usage: NexScreen.Companion [options]
           --tray                 Run in the notification area (no console window).
           --no-adb               Do not run adb (reverse tcp:<port> + start the app) when a tablet is plugged in.
-          --adb <path>           adb.exe to use (default: PATH, %LOCALAPPDATA%\Android\Sdk\platform-tools, then
-                                 the WinGet Google.PlatformTools package).
-          --no-auto-extend       Do not run DisplaySwitch /extend when the virtual monitor is connected but not
-                                 attached to the desktop while a tablet is present.
+          --adb <path>           adb.exe to use (default: platform-tools next to this exe, PATH,
+                                 %LOCALAPPDATA%\Android\Sdk\platform-tools, then the WinGet Google.PlatformTools package).
+          --no-auto-extend       Do not re-extend the virtual monitor when it is connected but not extended
+                                 (detached or duplicated) while a tablet is present. Overrides the saved
+                                 tray choice for this run.
           --list                 List outputs (name, resolution, refresh, adapter) and encoders, then exit.
           --output <sel>         auto (default: NexScreen monitor, else the VDD virtual monitor), nexscreen (EDID
                                  name "NexScreen" / manufacturer NXS), vdd (EDID manufacturer MTT), primary, or \\.\DISPLAYn

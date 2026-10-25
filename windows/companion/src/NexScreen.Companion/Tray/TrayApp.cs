@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 using System.Windows.Forms;
+using NexScreen.Companion.Adb;
 using NexScreen.Companion.Displays;
 using NexScreen.Companion.Util;
 
@@ -14,6 +15,9 @@ public sealed class TrayApp : ApplicationContext
 
     private readonly CompanionStatus _status;
     private readonly AutoExtender _extender;
+    private readonly AdbLinker? _linker;
+    private readonly string? _adbPath;
+    private readonly TraySettings _settings = new();
     private readonly Action _quit;
     private readonly StartupRegistration _startup = new();
     private readonly string _exePath = Environment.ProcessPath ?? Application.ExecutablePath;
@@ -26,11 +30,14 @@ public sealed class TrayApp : ApplicationContext
     private readonly System.Windows.Forms.Timer _disconnectTimer = new() { Interval = DisconnectNoticeDelayMs };
     private readonly SynchronizationContext _ui;
     private bool _announcedConnected;
+    private PairingDialog? _pairing;
 
-    private TrayApp(CompanionStatus status, AutoExtender extender, Action quit)
+    private TrayApp(CompanionStatus status, AutoExtender extender, AdbLinker? linker, string? adbPath, Action quit)
     {
         _status = status;
         _extender = extender;
+        _linker = linker;
+        _adbPath = adbPath;
         _quit = quit;
         _ui = SynchronizationContext.Current!;
 
@@ -38,7 +45,7 @@ public sealed class TrayApp : ApplicationContext
         _connectionItem = new ToolStripMenuItem { Enabled = false, Visible = false };
         _extendItem = new ToolStripMenuItem("Estender a área de trabalho", null, (_, _) => ExtendDesktop());
         _keepExtendedItem = new ToolStripMenuItem("Manter a tela do tablet estendida", null,
-            (_, _) => _extender.Enabled = !_extender.Enabled);
+            (_, _) => ToggleKeepExtended());
         _startupItem = new ToolStripMenuItem("Iniciar com o Windows", null, (_, _) => ToggleStartup());
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(
@@ -48,6 +55,7 @@ public sealed class TrayApp : ApplicationContext
             new ToolStripSeparator(),
             _extendItem,
             _keepExtendedItem,
+            new ToolStripMenuItem("Parear tablet por Wi-Fi…", null, (_, _) => ShowPairing()),
             new ToolStripMenuItem("Abrir pasta de logs", null, (_, _) => OpenLogs()),
             _startupItem,
             new ToolStripSeparator(),
@@ -71,7 +79,8 @@ public sealed class TrayApp : ApplicationContext
     }
 
     /// <summary>Starts the tray thread. Dispose the result (from any thread) to remove the icon.</summary>
-    public static IDisposable Start(CompanionStatus status, AutoExtender extender, Action quit, SingleInstance? instance)
+    public static IDisposable Start(CompanionStatus status, AutoExtender extender, AdbLinker? linker, string? adbPath, Action quit,
+        SingleInstance? instance)
     {
         TrayApp? app = null;
         var ready = new ManualResetEventSlim();
@@ -80,7 +89,7 @@ public sealed class TrayApp : ApplicationContext
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             SynchronizationContext.SetSynchronizationContext(new WindowsFormsSynchronizationContext());
-            app = new TrayApp(status, extender, quit);
+            app = new TrayApp(status, extender, linker, adbPath, quit);
             instance?.OnShowRequested(() => app._ui.Post(_ => app.ShowAlreadyRunning(), null));
             ready.Set();
             Application.Run(app);
@@ -106,6 +115,7 @@ public sealed class TrayApp : ApplicationContext
 
     protected override void ExitThreadCore()
     {
+        _pairing?.Dispose();
         _disconnectTimer.Dispose();
         _icon.Visible = false;
         _icon.Dispose();
@@ -152,6 +162,38 @@ public sealed class TrayApp : ApplicationContext
         }
     }
 
+    private void ToggleKeepExtended()
+    {
+        _extender.Enabled = !_extender.Enabled;
+        try
+        {
+            _settings.KeepExtended = _extender.Enabled;
+        }
+        catch (Exception ex) when (ex is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+        {
+            Log.Warn($"Could not save the keep-extended setting: {ex.Message}");
+        }
+    }
+
+    private void ShowPairing()
+    {
+        if (_pairing is { IsDisposed: false })
+        {
+            _pairing.Activate();
+            return;
+        }
+
+        var linker = _linker;
+        _pairing = new PairingDialog(_adbPath, () =>
+        {
+            Log.Info("Tablet paired over Wi-Fi; looking for it to connect.");
+            linker?.RequestReconnect();
+        });
+        _pairing.FormClosed += (_, _) => _pairing = null;
+        _pairing.Show();
+        _pairing.Activate();
+    }
+
     private void ToggleStartup()
     {
         try
@@ -177,10 +219,21 @@ public sealed class TrayApp : ApplicationContext
     private void ShowAlreadyRunning() =>
         _icon.ShowBalloonTip(5000, "NexScreen já está aberto", StatusText.Text(StatusText.Classify(_status.Snapshot)), ToolTipIcon.Info);
 
-    private static void ExtendDesktop()
+    private void ExtendDesktop()
     {
-        Log.Info("Tray: extending the desktop (DisplaySwitch /extend)");
-        AutoExtender.Extend();
+        Log.Info("Tray: extending the desktop");
+        var extender = _extender;
+        Task.Run(() =>
+        {
+            try
+            {
+                extender.ExtendNow();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Extend failed: {ex.GetType().Name}: {ex.Message.Trim()}");
+            }
+        });
     }
 
     private static void OpenLogs()

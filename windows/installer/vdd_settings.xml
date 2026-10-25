@@ -1,0 +1,43 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- Virtual Display Driver settings installed by NexScreen (C:\VirtualDisplayDriver\vdd_settings.xml).
+     Based on the default file of VDD 25.7.23. One monitor; the modes of the Galaxy Tab A9+ (1728x1080 first)
+     and two common 16:9/16:10 sizes. -->
+<vdd_settings>
+    <monitors>
+        <count>1</count>
+    </monitors>
+    <gpu>
+        <friendlyname>default</friendlyname>
+    </gpu>
+    <global>
+        <!-- Global refresh rates, replicated to every resolution below -->
+        <g_refresh_rate>60</g_refresh_rate>
+    </global>
+    <resolutions>
+        <resolution>
+            <width>1728</width>
+            <height>1080</height>
+            <refresh_rate>30</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1920</width>
+            <height>1080</height>
+            <refresh_rate>30</refresh_rate>
+        </resolution>
+        <resolution>
+            <width>1920</width>
+            <height>1200</height>
+            <refresh_rate>30</refresh_rate>
+        </resolution>
+    </resolutions>
+    <options>
+        <CustomEdid>false</CustomEdid>
+        <PreventSpoof>false</PreventSpoof>
+        <EdidCeaOverride>false</EdidCeaOverride>
+        <HardwareCursor>true</HardwareCursor>
+        <SDR10bit>false</SDR10bit>
+        <HDRPlus>false</HDRPlus>
+        <logging>false</logging>
+        <debuglogging>false</debuglogging>
+    </options>
+</vdd_settings>
